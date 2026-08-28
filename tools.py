@@ -83,13 +83,13 @@ def _to_json_schema_type(annotation: type) -> str:
 @dataclass(frozen=True)
 class FunctionToolOutput:
     call_id: str
-    response: str
+    output: str
 
     def serialize(self) -> dict:
         return {
             "type": "function_call_output",
             "call_id": self.call_id,
-            "output": self.response
+            "output": self.output
         }
 
 @dataclass(frozen=True)
@@ -108,11 +108,11 @@ class FunctionToolCall:
     call_id: str
 
     def execute(self) -> FunctionToolOutput:
+        result = self._mapping[self.tool](**self.args)
+
         return FunctionToolOutput(
-            response=self._mapping[self.tool](
-                    **self.args
-                ),
-            call_id=self.call_id
+            call_id=self.call_id,
+            output=str(result)
         )
 
 @dataclass(frozen=True)

@@ -4,4 +4,6 @@ You are a coding assistant.
 
 Use the provided tools to inspect the repository when necessary.
 Do not make claims about code you have not inspected.
+"Answer the user's specific question concisely;
+do not explain unrelated implementation details unless needed."
 """
