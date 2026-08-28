@@ -3,7 +3,7 @@ import inspect
 from pathlib import Path
 from enum import StrEnum
 from dataclasses import dataclass
-from typing import ClassVar, Self, Any
+from typing import ClassVar, Self
 from collections.abc import Callable
 
 _repo_path = Path(__file__).resolve().parent
@@ -81,6 +81,18 @@ def _to_json_schema_type(annotation: type) -> str:
         )
 
 @dataclass(frozen=True)
+class FunctionToolOutput:
+    call_id: str
+    response: str
+
+    def serialize(self) -> dict:
+        return {
+            "type": "function_call_output",
+            "call_id": self.call_id,
+            "output": self.response
+        }
+
+@dataclass(frozen=True)
 class FunctionToolCall:
 
     _mapping: ClassVar[dict[
@@ -95,9 +107,12 @@ class FunctionToolCall:
     args: dict
     call_id: str
 
-    def execute(self) -> Any:
-        return self._mapping[self.tool](
-            **self.args
+    def execute(self) -> FunctionToolOutput:
+        return FunctionToolOutput(
+            response=self._mapping[self.tool](
+                    **self.args
+                ),
+            call_id=self.call_id
         )
 
 @dataclass(frozen=True)

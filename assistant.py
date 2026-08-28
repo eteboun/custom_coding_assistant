@@ -2,7 +2,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 from config import model_name, instructions
-from tools import available_tools, FunctionToolCall, FunctionToolNames
+from tools import available_tools, FunctionToolCall, FunctionToolOutput, FunctionToolNames
 
 import json
 
@@ -44,11 +44,30 @@ class Assistant:
                     )
                 )
 
+        function_tool_outputs: list[FunctionToolOutput] = [
+            tool.execute()
+            for tool in function_tool_calls
+        ]
+
+        serialized_outputs = [
+            output.serialize()
+            for output in function_tool_outputs
+        ]
+
+        response = self.client.responses.create(
+            model=self.model_name,
+            tools=self.tools,
+            input=serialized_outputs,
+            previous_response_id=response.id,
+        )
+
+        return response
+
 assistant = Assistant(
     model_name=model_name,
     instructions=instructions,
     tools=available_tools
 )
 
-assistant.run(query="generate_id fonksiyonu nerede çağırılıyor?")
+print(assistant.run(query="generate_id fonksiyonu nerede çağırılıyor?"))
 
