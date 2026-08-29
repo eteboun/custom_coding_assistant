@@ -1,11 +1,10 @@
 from openai import OpenAI
 from openai.types.responses import Response
 from dotenv import load_dotenv
-from functools import wraps
 
 from config import model_name, instructions
-from tools import available_tools, FunctionToolCall, FunctionToolOutput, FunctionToolNames
-from logger import SessionLogger, FunctionToolCallLog, LLMCallLog
+from tools import available_tools, FunctionToolCall, FunctionToolNames
+from logger import SessionLogger, FunctionToolCallLog, LLMToolCallLog, LLMFinalCallLog
 
 import json
 
@@ -29,26 +28,7 @@ class Assistant:
     def _args_to_dict(args: str) -> dict:
         return json.loads(args)
 
-    @staticmethod
-    def _logger(func):
-        @wraps(func)
-        def wrapper(self, session_logger: SessionLogger, *args, **kwargs) -> Response:
-            response = func(self, *args, **kwargs)
-
-            if not isinstance(response, Response):
-                raise ValueError(
-                    "invalid response"
-                )
-
-            if response.usage is not None:
-                session_logger.total_input_tokens += response.usage.input_tokens
-                session_logger.total_output_tokens += response.usage.output_tokens
-
-            return response
-        return wrapper
-
-    @_logger
-    def _llm_first_call(self, query: str) -> Response:
+    def _llm_initial_call(self, query: str) -> Response:
         return self.client.responses.create(
             model=self.model_name,
             instructions=self.instructions,
@@ -56,7 +36,6 @@ class Assistant:
             tools=self.tools,
         )
 
-    @_logger
     def _llm_next_call(self, input_: list[dict], prev_id: str) -> Response:
         return self.client.responses.create(
             model=self.model_name,
@@ -65,48 +44,91 @@ class Assistant:
             previous_response_id=prev_id,
         )
 
+    def _func_tool_calls(self, response: Response) -> list[FunctionToolCall]:
+
+        function_tool_calls: list[FunctionToolCall] = []
+        for item in response.output:
+            if item.type == "function_call":
+                function_tool_calls.append(
+                    FunctionToolCall(
+                        tool=FunctionToolNames(item.name),
+                        args=self._args_to_dict(item.arguments),
+                        call_id=item.call_id
+                    )
+                )
+
+        return function_tool_calls
+
     def run(self, query: str) -> str:
 
-        session_logger = SessionLogger()
-        response = self._llm_first_call(
-            session_logger=session_logger,
-            query=query
-        )
+        session_logger = SessionLogger(query=query)
 
-        for _ in range(self.max_iters):
+        try:
+            response = self._llm_initial_call(query=query)
 
-            function_tool_calls: list[FunctionToolCall] = []
-            for item in response.output:
-                if item.type == "function_call":
-                    function_tool_calls.append(
-                        FunctionToolCall(
-                            tool=FunctionToolNames(item.name),
-                            args=self._args_to_dict(item.arguments),
-                            call_id=item.call_id
+            for _ in range(self.max_iters):
+                function_tool_calls = self._func_tool_calls(
+                    response=response
+                )
+
+                usage = response.usage
+
+                if usage is not None:
+                    input_tokens = usage.input_tokens
+                    raw_output_tokens = usage.output_tokens
+                    reasoning_tokens = usage.output_tokens_details.reasoning_tokens
+                else:
+                    input_tokens = 0
+                    raw_output_tokens = 0
+                    reasoning_tokens = 0
+
+                output_tokens = raw_output_tokens - reasoning_tokens
+
+                if not function_tool_calls:
+                    session_logger.add_llm_call(
+                        LLMFinalCallLog(
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            reasoning_tokens=reasoning_tokens,
+                            response=response.output_text
                         )
                     )
+                    return response.output_text
 
-            if not function_tool_calls:
-                return response.output_text
+                session_logger.add_llm_call(
+                    LLMToolCallLog(
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        reasoning_tokens=reasoning_tokens,
+                        tool_calls=[
+                            FunctionToolCallLog(
+                                name=call.tool,
+                                args=call.args
+                            )
+                            for call in function_tool_calls
+                        ]
+                    )
+                )
 
-            function_tool_outputs: list[FunctionToolOutput] = [
-                tool.execute()
-                for tool in function_tool_calls
-            ]
+                serialized_outputs = [
+                    tool.execute().serialize()
+                    for tool in function_tool_calls
+                ]
 
-            serialized_outputs = [
-                output.serialize()
-                for output in function_tool_outputs
-            ]
+                response = self.client.responses.create(
+                    model=self.model_name,
+                    tools=self.tools,
+                    input=serialized_outputs,
+                    previous_response_id=response.id,
+                )
 
-            response = self.client.responses.create(
-                model=self.model_name,
-                tools=self.tools,
-                input=serialized_outputs,
-                previous_response_id=response.id,
+            raise RuntimeError(
+                f"Maximum iteration limit reached: {self.max_iters}"
             )
 
-        return "reached loop limit."
+        finally:
+            if session_logger.llm_calls:
+                session_logger.log()
 
 assistant = Assistant(
     model_name=model_name,
@@ -115,5 +137,4 @@ assistant = Assistant(
     max_iters=10
 )
 
-print(assistant.run(query="_resolve_path fonksiyonu nerede çağırılıyor?"))
-
+print(assistant.run(query="bu repo ne yapıyor?"))

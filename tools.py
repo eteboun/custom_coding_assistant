@@ -8,10 +8,17 @@ from collections.abc import Callable
 
 _repo_path = Path(__file__).resolve().parent
 
+BLOCKED_FILES = {
+    ".env"
+}
+
 def _resolve_path(path: str) -> Path | None:
     full_path = (_repo_path / path).resolve()
 
-    if not full_path.is_relative_to(_repo_path):
+    if (
+            not full_path.is_relative_to(_repo_path)
+            or full_path.name in BLOCKED_FILES
+    ):
         return None
 
     return full_path
@@ -40,7 +47,9 @@ def search_code(query: str) -> str:
         process = subprocess.run(
             ["rg", "-n", query, str(_repo_path)],
             capture_output=True,
-            text=True
+            text=True,
+            encoding="utf-8",
+            errors="replace"
         )
     except FileNotFoundError:
         return "ripgrep is not installed or not available in PATH"
