@@ -3,7 +3,8 @@ from openai.types.responses import Response
 from dotenv import load_dotenv
 
 from config import model_name, instructions
-from tools import available_tools, FunctionToolCall, FunctionToolNames
+from tools.content import FunctionToolCall, FunctionToolNames
+from tools.obj import available_tools
 from logger import SessionLogger, FunctionToolCallLog, LLMToolCallLog, LLMFinalCallLog
 
 import json
@@ -137,4 +138,4 @@ assistant = Assistant(
     max_iters=10
 )
 
-print(assistant.run(query="bu repo ne yapıyor?"))
+print(assistant.run(query="Assistant.run nedir?"))

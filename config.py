@@ -12,3 +12,4 @@ do not offer follow-up actions unless necessary
 """
 
 log_path = Path(__file__).resolve().parent / "logs"
+repo_path = Path(__file__).resolve().parent
