@@ -15,8 +15,14 @@ available_tools = FunctionTools(
                     "Path to the file relative to the repository root, "
                     "for example 'src/auth.py'."
                 ),
-                "start_line": "Line number that the reading will be started.",
-                "end_line": "Line number that the reading will be ended, inclusive."
+                "start_line": (
+                    "Optional 1-based line number where reading starts. "
+                    "If omitted, reading starts at the beginning of the file."
+                ),
+                "end_line": (
+                    "Optional 1-based line number where reading ends, inclusive. "
+                    "If omitted, reading continues to the end of the file."
+                ),
             },
             additional_properties=False
         ),
@@ -26,7 +32,8 @@ available_tools = FunctionTools(
             tool_description=(
                 "List files and directories at a path inside the current repository. "
                 "Use this to explore the repository structure when you do not yet know "
-                "which file is relevant."
+                "which file is relevant. "
+                "Do not use this tool when the target file or files are already known."
             ),
             property_descriptions={
                 "path": (
@@ -40,14 +47,16 @@ available_tools = FunctionTools(
         FunctionTool.from_func(
             func=search_code,
             tool_description=(
-                "Search the current repository for an exact text or regular expression. "
+                "Search repository contents for text or regular expressions. "
+                "Do not use this tool to search for file names or to locate a file "
+                "whose path is already known. "
                 "Returns matching file paths, line numbers, and matching lines. "
-                "Use this to locate symbols, function names, classes, imports, "
-                "error messages, or other known pieces of text."
+                "Use this to locate known text such as symbol names, function names, "
+                "class names, imports, error messages, or other textual references."
             ),
             property_descriptions={
                 "query": (
-                    "Text or regular expression to search for in the repository."
+                    "Text or regular expression to search for in repository contents."
                 )
             },
             additional_properties=False
@@ -57,11 +66,12 @@ available_tools = FunctionTools(
             func=search_symbol,
             tool_description=(
                 "Search Python files across the current repository for class, "
-                "function, method, or nested function definitions. Returns matching "
-                "symbols with their relative file path, qualified notation, kind, "
-                "and source line range. Use this to locate Python definitions before "
-                "reading their implementation. If no definition is found, use "
-                "search_code to search for textual references."
+                "function, method, or nested function definitions. "
+                "Returns matching symbols with their relative file path, qualified "
+                "notation, kind, and source line range. "
+                "Use this when the Python symbol name is known but its file location "
+                "is not known. If no definition is found, use search_code to search "
+                "for textual references."
             ),
             property_descriptions={
                 "notation": (
@@ -77,9 +87,8 @@ available_tools = FunctionTools(
             func=read_symbol,
             tool_description=(
                 "Read the source code of a specific class, function, or method "
-                "from a Python file using its qualified notation. Use this when "
-                "the target symbol is already known and only its implementation "
-                "needs to be inspected."
+                "from a known Python file using its qualified notation. "
+                "Use this when both the target file and symbol are already known."
             ),
             property_descriptions={
                 "path": (
@@ -96,10 +105,12 @@ available_tools = FunctionTools(
         FunctionTool.from_func(
             func=replace_in_file,
             tool_description=(
-                "Replace a specific piece of text in a file. The replacement can be "
-                "restricted to a line range. The target text must occur exactly once "
-                "within the selected range; otherwise, the operation fails. Use this "
-                "to make precise edits to existing files without rewriting the entire file."
+                "Replace a specific piece of text in a file. "
+                "The replacement can be restricted to a line range. "
+                "The target text must occur exactly once within the selected range; "
+                "otherwise, the operation fails. "
+                "Use this to make precise edits to existing files without rewriting "
+                "the entire file."
             ),
             property_descriptions={
                 "path": (

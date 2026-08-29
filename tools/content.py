@@ -501,8 +501,10 @@ def replace_in_file(
         "status": "success",
         "content": {
             "path": path,
-            "replacements": 1,
-        },
+            "updated_text": new_text,
+            "start_line": start_line,
+            "end_line": end_line
+        }
     }
 
 _mapping = {

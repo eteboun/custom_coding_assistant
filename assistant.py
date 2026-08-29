@@ -138,4 +138,8 @@ assistant = Assistant(
     max_iters=10
 )
 
-print(assistant.run(query="Assistant.run nedir?"))
+print(
+    assistant.run(
+        query="deneme.py içindeki bölme fonksiyonunu valueerror çıkaracak şekilde düzelt"
+    )
+)
