@@ -1,6 +1,6 @@
 from tools.content import (FunctionTool, FunctionTools,
                            read_symbol, read_file, list_files,
-                           search_code, search_symbol)
+                           search_code, search_symbol, replace_in_file)
 
 available_tools = FunctionTools(
     tools=[
@@ -88,6 +88,37 @@ available_tools = FunctionTools(
                 "notation": (
                     "Exact qualified notation of the symbol to read, such as "
                     "'Assistant.run' or 'Factory.losses'."
+                ),
+            },
+            additional_properties=False
+        ),
+
+        FunctionTool.from_func(
+            func=replace_in_file,
+            tool_description=(
+                "Replace a specific piece of text in a file. The replacement can be "
+                "restricted to a line range. The target text must occur exactly once "
+                "within the selected range; otherwise, the operation fails. Use this "
+                "to make precise edits to existing files without rewriting the entire file."
+            ),
+            property_descriptions={
+                "path": (
+                    "Path to the file relative to the repository root."
+                ),
+                "old_text": (
+                    "Exact text to find and replace. It must occur exactly once within "
+                    "the selected line range."
+                ),
+                "new_text": (
+                    "Text that will replace old_text."
+                ),
+                "start_line": (
+                    "Optional 1-based first line of the region in which to search for "
+                    "old_text. If omitted, the search starts at the beginning of the file."
+                ),
+                "end_line": (
+                    "Optional 1-based last line of the region in which to search for "
+                    "old_text. If omitted, the search continues to the end of the file."
                 ),
             },
             additional_properties=False

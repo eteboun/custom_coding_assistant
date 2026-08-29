@@ -4,16 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="built basic logging">
-      <change afterPath="$PROJECT_DIR$/tools/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/content.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/obj.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/utils.py" afterDir="false" />
+    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment=".gitignore update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/assistant.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/content.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/obj.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/obj.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,6 +24,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;eteboun&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/eteboun/custom_coding_assistant.git&quot;,
+    &quot;accountId&quot;: &quot;6e6e2019-9566-47a0-a740-f990553171a9&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 8
 }</component>
@@ -38,20 +44,20 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.assistant.executor": "Run",
-    "Python.content.executor": "Run",
-    "Python.obj.executor": "Run",
-    "Python.tools.executor": "Run",
-    "Python.utils.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.assistant.executor&quot;: &quot;Run&quot;,
+    &quot;Python.content.executor&quot;: &quot;Run&quot;,
+    &quot;Python.obj.executor&quot;: &quot;Run&quot;,
+    &quot;Python.tools.executor&quot;: &quot;Run&quot;,
+    &quot;Python.utils.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\USER\Desktop\ai_projects\custom_coding_assistant\tools" />
@@ -104,7 +110,23 @@
       <option name="project" value="LOCAL" />
       <updated>1787983602782</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="built symbol search">
+      <option name="closed" value="true" />
+      <created>1788003759054</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1788003759054</updated>
+    </task>
+    <task id="LOCAL-00006" summary=".gitignore update">
+      <option name="closed" value="true" />
+      <created>1788003801676</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1788003801676</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -112,6 +134,8 @@
     <MESSAGE value="creating loop" />
     <MESSAGE value="building logging" />
     <MESSAGE value="built basic logging" />
-    <option name="LAST_COMMIT_MESSAGE" value="built basic logging" />
+    <MESSAGE value="built symbol search" />
+    <MESSAGE value=".gitignore update" />
+    <option name="LAST_COMMIT_MESSAGE" value=".gitignore update" />
   </component>
 </project>

@@ -19,6 +19,7 @@ class FunctionToolNames(StrEnum):
     SEARCH_CODE = "search_code"
     SEARCH_SYMBOL = "search_symbol"
     READ_SYMBOL = "read_symbol"
+    REPLACE_IN_FILE = "replace_in_file"
 
 class SymbolKind(StrEnum):
     METHOD = "method"
@@ -447,10 +448,68 @@ def search_code(query: str) -> str:
     else:
         return f"An error occurred: {process.stderr}"
 
+def replace_in_file(
+    path: str,
+    old_text: str,
+    new_text: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> dict:
+
+    full_path = _resolve_path(path)
+
+    if full_path is None:
+        return {
+            "status": "error",
+            "message": "Access to the file denied",
+        }
+
+    with open(full_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    start = start_line - 1 if start_line is not None else 0
+    end = end_line if end_line is not None else len(lines)
+
+    target_piece = "".join(lines[start:end])
+
+    count = target_piece.count(old_text)
+
+    if count == 0:
+        return {
+            "status": "error",
+            "message": f"No match found for {old_text} in {path}",
+        }
+
+    if count > 1:
+        return {
+            "status": "error",
+            "message": f"Multiple matches found for {old_text} in {path}",
+        }
+
+    target_piece = target_piece.replace(old_text, new_text)
+
+    new_content = (
+        "".join(lines[:start])
+        + target_piece
+        + "".join(lines[end:])
+    )
+
+    with open(full_path, "w", encoding="utf-8") as file:
+        file.write(new_content)
+
+    return {
+        "status": "success",
+        "content": {
+            "path": path,
+            "replacements": 1,
+        },
+    }
+
 _mapping = {
     FunctionToolNames.READ_FILE: read_file,
     FunctionToolNames.LIST_FILES: list_files,
     FunctionToolNames.SEARCH_CODE: search_code,
     FunctionToolNames.SEARCH_SYMBOL: search_symbol,
-    FunctionToolNames.READ_SYMBOL: read_symbol
+    FunctionToolNames.READ_SYMBOL: read_symbol,
+    FunctionToolNames.REPLACE_IN_FILE: replace_in_file,
 }
