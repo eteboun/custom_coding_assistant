@@ -1,10 +1,11 @@
 from openai import OpenAI
 from openai.types.responses import Response
+from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
 from config import model_name, instructions
 from tools.content import FunctionToolCall, FunctionToolNames
-from tools.obj import available_tools
+from tools.tool_set import available_tools
 from logger import SessionLogger, FunctionToolCallLog, LLMToolCallLog, LLMFinalCallLog
 
 import json
@@ -23,6 +24,10 @@ class Assistant:
         self.instructions = instructions
         self.tools = tools
         self.max_iters = max_iters
+
+        self.reasoning = Reasoning(
+            effort="low",
+        )
         self.client = OpenAI()
 
     @staticmethod
@@ -35,14 +40,17 @@ class Assistant:
             instructions=self.instructions,
             input=query,
             tools=self.tools,
+            reasoning=self.reasoning
         )
 
     def _llm_next_call(self, input_: list[dict], prev_id: str) -> Response:
         return self.client.responses.create(
             model=self.model_name,
+            instructions=self.instructions,
             tools=self.tools,
             input=input_,
             previous_response_id=prev_id,
+            reasoning=self.reasoning,
         )
 
     def _func_tool_calls(self, response: Response) -> list[FunctionToolCall]:
@@ -140,6 +148,6 @@ assistant = Assistant(
 
 print(
     assistant.run(
-        query="deneme.py içindeki bölme fonksiyonunu valueerror çıkaracak şekilde düzelt"
+        query="bir twosum.py aç ve içinde two sum algoritmasını implement eden kodu yaz."
     )
 )

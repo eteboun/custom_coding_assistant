@@ -12,8 +12,10 @@ _BLOCKED_FILES = {
 _BLOCKED_DIRS = {
     ".git",
     ".venv",
+    ".idea",
     "venv",
     "__pycache__",
+    "logs"
 }
 
 def _resolve_path(path: str) -> Path | None:

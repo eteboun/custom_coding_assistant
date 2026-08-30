@@ -20,6 +20,7 @@ class FunctionToolNames(StrEnum):
     SEARCH_SYMBOL = "search_symbol"
     READ_SYMBOL = "read_symbol"
     REPLACE_IN_FILE = "replace_in_file"
+    CREATE_FILE = "create_file"
 
 class SymbolKind(StrEnum):
     METHOD = "method"
@@ -507,6 +508,34 @@ def replace_in_file(
         }
     }
 
+def create_file(
+    path: str,
+    content: str,
+) -> dict:
+    full_path = _resolve_path(path)
+
+    if full_path is None:
+        return {
+            "status": "error",
+            "message": "Access to the file denied",
+        }
+
+    if full_path.exists():
+        return {
+            "status": "error",
+            "message": f"File {full_path} already exists",
+        }
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(content, encoding="utf-8")
+
+    return {
+        "status": "success",
+        "content": {
+            "path": path,
+        }
+    }
+
 _mapping = {
     FunctionToolNames.READ_FILE: read_file,
     FunctionToolNames.LIST_FILES: list_files,
@@ -514,4 +543,5 @@ _mapping = {
     FunctionToolNames.SEARCH_SYMBOL: search_symbol,
     FunctionToolNames.READ_SYMBOL: read_symbol,
     FunctionToolNames.REPLACE_IN_FILE: replace_in_file,
+    FunctionToolNames.CREATE_FILE: create_file,
 }
