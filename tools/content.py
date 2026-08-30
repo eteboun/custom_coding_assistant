@@ -1,6 +1,7 @@
 import subprocess
 import ast
 import inspect
+import sys
 
 from enum import StrEnum
 from dataclasses import dataclass
@@ -11,7 +12,7 @@ from pathlib import Path
 from config import repo_path
 from tools.utils import (_resolve_path, _symbol_matches,
                          _search_files_containing_terms, _parse_python_file,
-                         _to_json_schema_type)
+                         _to_json_schema_type, _BLOCKED_FILES, _BLOCKED_DIRS)
 
 class FunctionToolNames(StrEnum):
     READ_FILE = "read_file"
@@ -536,6 +537,53 @@ def create_file(
         }
     }
 
+def repo_tree() -> dict:
+    files = []
+
+    for path in repo_path.rglob("*"):
+        relative_path = path.relative_to(repo_path)
+
+        if (
+            path.is_file()
+            and path.name not in _BLOCKED_FILES
+            and not any(
+                part in _BLOCKED_DIRS
+                for part in relative_path.parts
+            )
+        ):
+            files.append(relative_path.as_posix())
+
+    return {
+        "status": "success",
+        "content": files,
+    }
+
+def run_python(path: str) -> dict:
+
+    full_path = _resolve_path(path)
+
+    if full_path is None:
+        return {
+            "status": "error",
+            "message": "Access to the file denied",
+        }
+
+    result = subprocess.run(
+        [sys.executable, str(full_path)],
+        capture_output=True,
+        text=True,
+        timeout=30
+    )
+
+    return {
+        "status": "success",
+        "content": {
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        },
+    }
+
 _mapping = {
     FunctionToolNames.READ_FILE: read_file,
     FunctionToolNames.LIST_FILES: list_files,
@@ -545,3 +593,5 @@ _mapping = {
     FunctionToolNames.REPLACE_IN_FILE: replace_in_file,
     FunctionToolNames.CREATE_FILE: create_file,
 }
+
+print(repo_tree())
