@@ -34,6 +34,14 @@ def _resolve_path(path: str) -> Path | None:
 
     return full_path
 
+def _is_allowed_filepath(path: Path) -> bool:
+    full_path = _resolve_path(path.as_posix())
+
+    if full_path is None:
+        return False
+
+    return full_path.is_file()
+
 def _parse_python_file(path: Path) -> ast.Module:
     with open(path, encoding="utf-8") as f:
         return ast.parse(f.read())

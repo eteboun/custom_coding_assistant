@@ -4,8 +4,7 @@ from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
 from config import model_name, instructions
-from tools.content import FunctionToolCall, FunctionToolNames
-from tools.tool_set import available_tools
+from tools.content import FunctionToolClass, FunctionToolCall
 from logger import SessionLogger, FunctionToolCallLog, LLMToolCallLog, LLMFinalCallLog
 
 import json
@@ -60,7 +59,7 @@ class Assistant:
             if item.type == "function_call":
                 function_tool_calls.append(
                     FunctionToolCall(
-                        tool=FunctionToolNames(item.name),
+                        tool=item.name,
                         args=self._args_to_dict(item.arguments),
                         call_id=item.call_id
                     )
@@ -142,7 +141,7 @@ class Assistant:
 assistant = Assistant(
     model_name=model_name,
     instructions=instructions,
-    tools=available_tools,
+    tools=FunctionToolClass.tools(),
     max_iters=10
 )
 
