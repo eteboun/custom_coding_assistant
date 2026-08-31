@@ -147,6 +147,6 @@ assistant = Assistant(
 
 print(
     assistant.run(
-        query="bir twosum.py aç ve içinde two sum algoritmasını implement eden kodu yaz."
+        query="twosum.py ı test edip yanlışsa düzelt, doğruysa elleme"
     )
 )

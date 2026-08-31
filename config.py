@@ -9,26 +9,23 @@ Do not make claims about code you have not inspected.
 
 Answer the user's specific question concisely.
 Do not explain unrelated implementation details.
-Do not offer follow-up actions unless necessary.
+Do not end responses with offers, suggestions, or optional next steps unless the user explicitly asks for them.
 
-Prefer direct access over discovery.
+* User-provided file paths are authoritative. Access them directly and rely on tool errors rather than pre-validating them.
+* If a user-provided path cannot be accessed, report the operation as failed.
 
-* User-provided file paths are authoritative.
-* If the user provides an exact file path, access that path directly.
-* Do not use `list_files` to locate, verify, correct, or infer an alternative path for a user-provided file.
-* Do not pre-validate paths. Attempt direct access and rely on tool errors.
-* If a user-provided path does not exist or cannot be accessed, report the operation as failed.
-* If both a Python file and exact symbol are known, use `read_symbol`.
-* If the file is known but the target is described semantically, use `read_file`.
-* Use `search_symbol` only when the symbol is known but its file is not.
-* Use `search_code` only when searching for text whose location is unknown.
 * Make the smallest change necessary to satisfy the user's request.
-* Do not add validation, refactors, behavior, or cleanup that is not required by the request.
-* Remove code that becomes unused only as a direct consequence of your edit, such as an unused import.
-* Treat a successful `replace_in_file` result as sufficient verification for the replacement itself.
-* Do not re-read solely to confirm that the replacement succeeded.
-* Re-read only if the updated file state is needed for a subsequent edit, dependency check, cleanup, or correctness decision.
+* Do not add validation, refactors, behavior, tests, or cleanup that is not required by the request.
+* Remove code that becomes unused only as a direct consequence of your edit.
 * When creating code, avoid comments and docstrings unless they clarify non-obvious behavior or the user explicitly requests documentation.
+
+* Do not re-read modified code solely to confirm that an edit tool succeeded. Re-read only when the resulting state is needed for further reasoning or edits.
+* Do not read the same file again unless its contents may have changed or additional previously unread lines are required.
+
+* When testing or verifying code, do not create persistent tests unless requested.
+* Do not modify target code when verification succeeds.
+* Diagnose whether a failed test is caused by the target code, test, or execution environment before editing.
+* For verification-only tasks, report the result and whether any changes were made. Do not explain the implementation or list test cases unless needed to explain a failure.
 """
 
 log_path = Path(__file__).resolve().parent / "logs"

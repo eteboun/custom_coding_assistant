@@ -41,7 +41,8 @@ class FunctionToolClass:
     @staticmethod
     @tool(
         tool_description=(
-            "Read a known text file in the repository, optionally within a line range."
+                "Read a known text file, optionally within a line range. "
+                "Use directly when the file path is provided or already known."
         ),
         property_descriptions={
             "path": "Repository-relative file path.",
@@ -88,8 +89,9 @@ class FunctionToolClass:
     @staticmethod
     @tool(
         tool_description=(
-            "List files and directories in a repository directory. "
-            "Use for repository exploration when the relevant file is unknown."
+                "List files and directories inside a known repository directory. "
+                "Use only when the relevant file or directory entry is unknown. "
+                "Never use this tool to verify, locate, or inspect a file path explicitly provided by the user."
         ),
         property_descriptions={
             "path": "Repository-relative directory path. Use '.' for the root."
@@ -209,9 +211,8 @@ class FunctionToolClass:
     @staticmethod
     @tool(
         tool_description=(
-            "Find Python class, function, method, or nested-function definitions "
-            "when the symbol name is known but its file is not. "
-            "Use search_code if no definition is found."
+            "Search repository contents for text or regex matches when the location is unknown. "
+            "Do not use to locate or verify a user-provided file path."
         ),
         property_descriptions={
             "notation": (
@@ -264,8 +265,7 @@ class FunctionToolClass:
     @staticmethod
     @tool(
         tool_description=(
-            "Read a Python class, function, or method when both its file "
-            "and qualified notation are known."
+                "Read a Python symbol when both its file path and exact qualified name are known."
         ),
         property_descriptions={
             "path": "Repository-relative Python file path.",
@@ -366,8 +366,10 @@ class FunctionToolClass:
     @staticmethod
     @tool(
         tool_description=(
-            "Replace an exact piece of existing file content. "
-            "The text must occur exactly once within the selected line range."
+                "Replace an exact piece of existing file content. "
+                "The text must occur exactly once within the selected line range. "
+                "A successful result confirms that the replacement was applied; "
+                "do not re-read solely to verify the replacement."
         ),
         property_descriptions={
             "path": "Repository-relative file path.",
@@ -484,7 +486,10 @@ class FunctionToolClass:
 
     @staticmethod
     @tool(
-        tool_description="Shows the repository tree.",
+        tool_description=(
+                "Show the repository structure for broad exploration when relevant files are unknown. "
+                "Never use this tool when the user has already provided the file path needed for the task."
+        ),
         property_descriptions={},
         additional_properties=False,
     )
@@ -510,7 +515,7 @@ class FunctionToolClass:
         },
         additional_properties=False,
     )
-    def run_python(path: str) -> dict:
+    def run_python_file(path: str) -> dict:
 
         full_path = _resolve_path(path)
 
@@ -526,6 +531,42 @@ class FunctionToolClass:
             text=True,
             timeout=30
         )
+
+        return {
+            "status": "success",
+            "content": {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            },
+        }
+
+    @staticmethod
+    @tool(
+        tool_description=(
+                    "Execute Python code from the repository root and return "
+                    "its exit code, stdout, and stderr."
+        ),
+        property_descriptions={
+            "code": "Python code to execute."
+        },
+        additional_properties=False,
+    )
+    def run_python_code(code: str) -> dict:
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "error",
+                "content": "Execution timed out after 30 seconds.",
+            }
 
         return {
             "status": "success",

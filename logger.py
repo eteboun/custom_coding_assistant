@@ -1,17 +1,16 @@
 from dataclasses import dataclass, field
-from tools.content import FunctionToolNames
 from datetime import datetime
 from config import log_path
 import json
 
 @dataclass
 class FunctionToolCallLog:
-    name: FunctionToolNames
+    name: str
     args: dict
 
     def serialize(self) -> dict:
         return {
-            "name": self.name.value,
+            "name": self.name,
             "args": self.args,
         }
 

@@ -4,13 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="adding new tools (not finished signatures)">
-      <change afterPath="$PROJECT_DIR$/tools/schemas.py" afterDir="false" />
+    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="improved tools structure">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/assistant.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tools/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/content.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/tool_set.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -162,7 +161,15 @@
       <option name="project" value="LOCAL" />
       <updated>1788114010297</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="improved tools structure">
+      <option name="closed" value="true" />
+      <created>1788164589076</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1788164589076</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -176,6 +183,7 @@
     <MESSAGE value="better system prompts needed" />
     <MESSAGE value="added create_file tool" />
     <MESSAGE value="adding new tools (not finished signatures)" />
-    <option name="LAST_COMMIT_MESSAGE" value="adding new tools (not finished signatures)" />
+    <MESSAGE value="improved tools structure" />
+    <option name="LAST_COMMIT_MESSAGE" value="improved tools structure" />
   </component>
 </project>
