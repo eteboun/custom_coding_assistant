@@ -4,9 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="NEED BETTER SYSTEM PROMPTS">
+    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="added semi sandboxing with docker">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/assistant.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tools/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/content.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/schemas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -174,7 +179,15 @@
       <option name="project" value="LOCAL" />
       <updated>1788167672281</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="added semi sandboxing with docker">
+      <option name="closed" value="true" />
+      <created>1788255776198</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1788255776198</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -190,6 +203,7 @@
     <MESSAGE value="adding new tools (not finished signatures)" />
     <MESSAGE value="improved tools structure" />
     <MESSAGE value="NEED BETTER SYSTEM PROMPTS" />
-    <option name="LAST_COMMIT_MESSAGE" value="NEED BETTER SYSTEM PROMPTS" />
+    <MESSAGE value="added semi sandboxing with docker" />
+    <option name="LAST_COMMIT_MESSAGE" value="added semi sandboxing with docker" />
   </component>
 </project>

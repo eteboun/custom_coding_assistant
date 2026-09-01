@@ -1,6 +1,6 @@
 from pathlib import Path
 
-model_name = "gpt-5-nano"
+model_name = "gpt-5.4-mini"
 instructions = """
 You are a coding assistant.
 

@@ -4,8 +4,8 @@ from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
 from config import model_name, instructions
-from tools.content import FunctionToolClass, FunctionToolCall
-from logger import SessionLogger, FunctionToolCallLog, LLMToolCallLog, LLMFinalCallLog
+from tools.content import Tools, ToolCall
+from logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog
 
 import json
 
@@ -52,20 +52,20 @@ class Assistant:
             reasoning=self.reasoning,
         )
 
-    def _func_tool_calls(self, response: Response) -> list[FunctionToolCall]:
+    def _tool_calls(self, response: Response) -> list[ToolCall]:
 
-        function_tool_calls: list[FunctionToolCall] = []
+        tool_calls: list[ToolCall] = []
         for item in response.output:
             if item.type == "function_call":
-                function_tool_calls.append(
-                    FunctionToolCall(
+                tool_calls.append(
+                    ToolCall(
                         tool=item.name,
                         args=self._args_to_dict(item.arguments),
                         call_id=item.call_id
                     )
                 )
 
-        return function_tool_calls
+        return tool_calls
 
     def run(self, query: str) -> str:
 
@@ -75,7 +75,7 @@ class Assistant:
             response = self._llm_initial_call(query=query)
 
             for _ in range(self.max_iters):
-                function_tool_calls = self._func_tool_calls(
+                tool_calls = self._tool_calls(
                     response=response
                 )
 
@@ -92,7 +92,7 @@ class Assistant:
 
                 output_tokens = raw_output_tokens - reasoning_tokens
 
-                if not function_tool_calls:
+                if not tool_calls:
                     session_logger.add_llm_call(
                         LLMFinalCallLog(
                             input_tokens=input_tokens,
@@ -109,18 +109,18 @@ class Assistant:
                         output_tokens=output_tokens,
                         reasoning_tokens=reasoning_tokens,
                         tool_calls=[
-                            FunctionToolCallLog(
+                            ToolCallLog(
                                 name=call.tool,
                                 args=call.args
                             )
-                            for call in function_tool_calls
+                            for call in tool_calls
                         ]
                     )
                 )
 
                 serialized_outputs = [
                     tool.execute().serialize()
-                    for tool in function_tool_calls
+                    for tool in tool_calls
                 ]
 
                 response = self.client.responses.create(
@@ -141,12 +141,6 @@ class Assistant:
 assistant = Assistant(
     model_name=model_name,
     instructions=instructions,
-    tools=FunctionToolClass.tools(),
+    tools=Tools.tools(),
     max_iters=10
-)
-
-print(
-    assistant.run(
-        query="twosum.py ı test edip yanlışsa düzelt, doğruysa elleme"
-    )
 )

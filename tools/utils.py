@@ -18,29 +18,87 @@ _BLOCKED_DIRS = {
     "logs"
 }
 
-def _resolve_path(path: str) -> Path | None:
+def _resolve_path(path: str) -> dict:
     full_path = (repo_path / path).resolve()
 
     if not full_path.is_relative_to(repo_path):
-        return None
+        return {
+            "status": "error",
+            "message": "Access outside the repository is denied",
+        }
 
     if full_path.name in _BLOCKED_FILES:
-        return None
+        return {
+            "status": "error",
+            "message": f"Path '{full_path}' is blocked"
+        }
 
     relative_parts = full_path.relative_to(repo_path).parts
 
     if any(part in _BLOCKED_DIRS for part in relative_parts):
-        return None
+        return {
+            "status": "error",
+            "message": f"Path '{full_path}' is blocked"
+        }
 
-    return full_path
+    return {
+        "status": "success",
+        "content": full_path
+    }
+
+def _resolve_dir(path: str) -> dict:
+    resolved_path = _resolve_path(path)
+
+    if resolved_path["status"] == "error":
+        return resolved_path
+
+    full_path = resolved_path["content"]
+
+    if not full_path.exists():
+        return {
+            "status": "error",
+            "message": f"Directory {path} does not exist",
+        }
+
+    if not full_path.is_dir():
+        return {
+            "status": "error",
+            "message": f"{path} is not a directory",
+        }
+
+    return {
+        "status": "success",
+        "content": full_path,
+    }
+
+def _resolve_file(path: str) -> dict:
+    resolved_path = _resolve_path(path)
+
+    if resolved_path["status"] == "error":
+        return resolved_path
+
+    full_path = resolved_path["content"]
+
+    if not full_path.exists():
+        return {
+            "status": "error",
+            "message": f"File {path} does not exist",
+        }
+
+    if not full_path.is_file():
+        return {
+            "status": "error",
+            "message": f"{path} is not a file",
+        }
+
+    return {
+        "status": "success",
+        "content": full_path,
+    }
 
 def _is_allowed_filepath(path: Path) -> bool:
-    full_path = _resolve_path(path.as_posix())
-
-    if full_path is None:
-        return False
-
-    return full_path.is_file()
+    resolved_file = _resolve_file(path.as_posix())
+    return resolved_file["status"] == "success"
 
 def _parse_python_file(path: Path) -> ast.Module:
     with open(path, encoding="utf-8") as f:
@@ -69,10 +127,12 @@ def _search_files_containing_terms(
 
     for path in repo_path.rglob(f"*{extension}"):
         relative_path = path.relative_to(repo_path)
-        full_path = _resolve_path(str(relative_path))
+        resolved_file = _resolve_file(relative_path.as_posix())
 
-        if full_path is None:
+        if resolved_file["status"] == "error":
             continue
+
+        full_path = resolved_file["content"]
 
         code = full_path.read_text(encoding="utf-8")
 

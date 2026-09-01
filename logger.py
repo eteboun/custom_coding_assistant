@@ -4,7 +4,7 @@ from config import log_path
 import json
 
 @dataclass
-class FunctionToolCallLog:
+class ToolCallLog:
     name: str
     args: dict
 
@@ -29,7 +29,7 @@ class LLMCallLog:
 
 @dataclass
 class LLMToolCallLog(LLMCallLog):
-    tool_calls: list[FunctionToolCallLog]
+    tool_calls: list[ToolCallLog]
 
     def serialize(self) -> dict:
         return {

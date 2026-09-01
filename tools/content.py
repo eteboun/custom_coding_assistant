@@ -7,12 +7,12 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from config import repo_path
-from tools.schemas import Symbol, SymbolKind, FunctionTool
-from tools.utils import (_resolve_path, _symbol_matches,
+from tools.schemas import Symbol, SymbolKind, ToolSchema
+from tools.utils import (_symbol_matches,
                          _search_files_containing_terms, _parse_python_file,
-                         _is_allowed_filepath)
+                         _is_allowed_filepath, _resolve_file, _resolve_dir, _resolve_path)
 
-class FunctionToolClass:
+class Tools:
 
     @staticmethod
     def tool(
@@ -23,7 +23,7 @@ class FunctionToolClass:
 
         def decorator(func):
 
-            tool_data = FunctionTool.from_func(
+            tool_data = ToolSchema.from_func(
                 func=func,
                 tool_description=tool_description,
                 property_descriptions=property_descriptions,
@@ -55,13 +55,12 @@ class FunctionToolClass:
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> dict:
-        full_path = _resolve_path(path)
+        resolved_file = _resolve_file(path)
 
-        if full_path is None:
-            return {
-                "status": "error",
-                "message": "Access to the file denied",
-            }
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
 
         with open(full_path, encoding="utf-8") as f:
             lines = f.readlines()
@@ -98,13 +97,12 @@ class FunctionToolClass:
         additional_properties=False,
     )
     def list_files(path: str) -> dict:
-        full_path = _resolve_path(path)
+        resolved_path = _resolve_dir(path)
 
-        if full_path is None:
-            return {
-                "status": "error",
-                "message": "Access to the file denied",
-            }
+        if resolved_path["status"] == "error":
+            return resolved_path
+
+        full_path = resolved_path["content"]
 
         return {
             "status": "success",
@@ -152,7 +150,7 @@ class FunctionToolClass:
                         )
                     )
 
-                symbols += FunctionToolClass._walk_symbols(
+                symbols += Tools._walk_symbols(
                     node=child,
                     curr_notation=next_notation,
                     parent_kind=SymbolKind.CLASS,
@@ -196,7 +194,7 @@ class FunctionToolClass:
                         )
                     )
 
-                symbols += FunctionToolClass._walk_symbols(
+                symbols += Tools._walk_symbols(
                     node=child,
                     curr_notation=next_notation,
                     parent_kind=kind,
@@ -267,14 +265,14 @@ class FunctionToolClass:
     def _run_dockerized_file(path: Path) -> dict:
         relative_path = path.relative_to(repo_path)
 
-        return FunctionToolClass._run_docker([
+        return Tools._run_docker([
             "python",
             relative_path.as_posix(),
         ])
 
     @staticmethod
     def _run_dockerized_code(code: str) -> dict:
-        return FunctionToolClass._run_docker([
+        return Tools._run_docker([
             "python",
             "-c",
             code,
@@ -316,7 +314,7 @@ class FunctionToolClass:
 
             symbols.extend(
                 symbol.serialize()
-                for symbol in FunctionToolClass._walk_symbols(
+                for symbol in Tools._walk_symbols(
                     search_notation=notation,
                     allow_unqualified=allow_unqualified,
                     path=full_path.relative_to(repo_path),
@@ -349,12 +347,12 @@ class FunctionToolClass:
     )
     def read_symbol(path: str, notation: str) -> dict:
 
-        full_path = _resolve_path(path)
-        if full_path is None:
-            return {
-                "status": "error",
-                "message": "Access to the file denied",
-            }
+        resolved_file = _resolve_file(path)
+
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
 
         try:
             tree = _parse_python_file(path=full_path)
@@ -364,7 +362,7 @@ class FunctionToolClass:
                 "message": f"Failed to parse Python file: {full_path.relative_to(repo_path).as_posix()}"
             }
 
-        symbols = FunctionToolClass._walk_symbols(
+        symbols = Tools._walk_symbols(
             search_notation=notation,
             allow_unqualified=False,
             path=full_path.relative_to(repo_path),
@@ -385,7 +383,7 @@ class FunctionToolClass:
 
         symbol_data = symbols[0]
 
-        read_result = FunctionToolClass.read_file(
+        read_result = Tools.read_file(
             path=path,
             start_line=symbol_data.start_line,
             end_line=symbol_data.end_line
@@ -466,13 +464,12 @@ class FunctionToolClass:
         end_line: int | None = None,
     ) -> dict:
 
-        full_path = _resolve_path(path)
+        resolved_file = _resolve_file(path)
 
-        if full_path is None:
-            return {
-                "status": "error",
-                "message": "Access to the file denied",
-            }
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
 
         with open(full_path, "r", encoding="utf-8") as file:
             lines = file.readlines()
@@ -532,13 +529,12 @@ class FunctionToolClass:
         path: str,
         content: str,
     ) -> dict:
-        full_path = _resolve_path(path)
+        resolved_path = _resolve_path(path)
 
-        if full_path is None:
-            return {
-                "status": "error",
-                "message": "Access to the file denied",
-            }
+        if resolved_path["status"] == "error":
+            return resolved_path
+
+        full_path = resolved_path["content"]
 
         if full_path.exists():
             return {
@@ -555,6 +551,50 @@ class FunctionToolClass:
                 "path": path,
             }
         }
+
+    @staticmethod
+    @tool(
+        tool_description="Deletes the file with provided path.",
+        property_descriptions={
+            "path": "Repository-relative path for the file to be deleted.",
+        },
+        additional_properties=False
+    )
+    def delete_file(path: str) -> dict:
+        resolved_file = _resolve_path(path)
+
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
+
+        full_path.unlink()
+
+        return {
+            "status": "success",
+            "content": {
+                "path": path,
+            }
+        }
+
+    @staticmethod
+    @tool(
+        tool_description=(
+                "Runs a command in an isolated Docker container "
+                "with the repository as the working directory."
+        ),
+        property_descriptions={
+            "command": (
+                    "Command and arguments to execute, provided as a list. "
+                    "Example: ['python', '-m', 'pytest']."
+            )
+        },
+        additional_properties=False
+    )
+    def run_command(command: list[str]) -> dict:
+        return Tools._run_docker(
+            command=command
+        )
 
     @staticmethod
     @tool(
@@ -589,15 +629,20 @@ class FunctionToolClass:
     )
     def run_python_file(path: str) -> dict:
 
-        full_path = _resolve_path(path)
+        resolved_file = _resolve_file(path)
 
-        if full_path is None:
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
+
+        if full_path.suffix != ".py":
             return {
                 "status": "error",
-                "message": "Access to the file denied",
+                "message": f"File {full_path} is not a Python file"
             }
 
-        return FunctionToolClass._run_dockerized_file(
+        return Tools._run_dockerized_file(
             path=full_path
         )
 
@@ -613,14 +658,14 @@ class FunctionToolClass:
         additional_properties=False,
     )
     def run_python_code(code: str) -> dict:
-        return FunctionToolClass._run_dockerized_code(code)
+        return Tools._run_dockerized_code(code)
 
     @staticmethod
     def tool_mapping() -> dict[str, Callable]:
 
         return {
             func.__name__: func
-            for _, func in inspect.getmembers(FunctionToolClass, predicate=inspect.isfunction)
+            for _, func in inspect.getmembers(Tools, predicate=inspect.isfunction)
             if getattr(func, "is_tool", False)
         }
 
@@ -629,12 +674,12 @@ class FunctionToolClass:
 
         return [
             func.tool_data
-            for _, func in inspect.getmembers(FunctionToolClass, predicate=inspect.isfunction)
+            for _, func in inspect.getmembers(Tools, predicate=inspect.isfunction)
             if getattr(func, "is_tool", False)
         ]
 
 @dataclass(frozen=True)
-class FunctionToolOutput:
+class ToolOutput:
     call_id: str
     output: str
 
@@ -647,15 +692,15 @@ class FunctionToolOutput:
 
 
 @dataclass(frozen=True)
-class FunctionToolCall:
+class ToolCall:
     tool: str
     args: dict
     call_id: str
 
-    def execute(self) -> FunctionToolOutput:
-        result = FunctionToolClass.tool_mapping()[self.tool](**self.args)
+    def execute(self) -> ToolOutput:
+        result = Tools.tool_mapping()[self.tool](**self.args)
 
-        return FunctionToolOutput(
+        return ToolOutput(
             call_id=self.call_id,
             output=str(result)
         )

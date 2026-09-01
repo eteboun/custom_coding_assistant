@@ -102,7 +102,7 @@ class Parameters:
         )
 
 @dataclass(frozen=True)
-class FunctionTool:
+class ToolSchema:
     name: str
     description: str
     parameters: Parameters
