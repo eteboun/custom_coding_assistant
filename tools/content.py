@@ -1,7 +1,6 @@
 import subprocess
 import ast
 import inspect
-import sys
 
 from collections.abc import Callable
 from pathlib import Path
@@ -207,6 +206,79 @@ class FunctionToolClass:
                 )
 
         return symbols
+
+    @staticmethod
+    def _run_docker(command: list[str]) -> dict:
+        docker_command = [
+            "docker",
+            "run",
+            "--rm",
+
+            "--user", "1000:1000",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+
+            "--network", "none",
+
+            "--memory", "512m",
+            "--cpus", "1",
+            "--pids-limit", "64",
+
+            "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+
+            "--mount",
+            f"type=bind,source={repo_path},target=/workspace,readonly",
+
+            "--workdir", "/workspace",
+
+            "python:3.13-slim",
+            *command,
+        ]
+
+        try:
+            completed = subprocess.run(
+                docker_command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "error",
+                "message": "Execution timed out",
+            }
+        except FileNotFoundError:
+            return {
+                "status": "error",
+                "message": "Docker is not installed or not in PATH",
+            }
+
+        return {
+            "status": "success" if completed.returncode == 0 else "error",
+            "content": {
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+                "returncode": completed.returncode,
+            },
+        }
+
+    @staticmethod
+    def _run_dockerized_file(path: Path) -> dict:
+        relative_path = path.relative_to(repo_path)
+
+        return FunctionToolClass._run_docker([
+            "python",
+            relative_path.as_posix(),
+        ])
+
+    @staticmethod
+    def _run_dockerized_code(code: str) -> dict:
+        return FunctionToolClass._run_docker([
+            "python",
+            "-c",
+            code,
+        ])
 
     @staticmethod
     @tool(
@@ -525,21 +597,9 @@ class FunctionToolClass:
                 "message": "Access to the file denied",
             }
 
-        result = subprocess.run(
-            [sys.executable, str(full_path)],
-            capture_output=True,
-            text=True,
-            timeout=30
+        return FunctionToolClass._run_dockerized_file(
+            path=full_path
         )
-
-        return {
-            "status": "success",
-            "content": {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            },
-        }
 
     @staticmethod
     @tool(
@@ -553,29 +613,7 @@ class FunctionToolClass:
         additional_properties=False,
     )
     def run_python_code(code: str) -> dict:
-
-        try:
-            result = subprocess.run(
-                [sys.executable, "-c", code],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            return {
-                "status": "error",
-                "content": "Execution timed out after 30 seconds.",
-            }
-
-        return {
-            "status": "success",
-            "content": {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            },
-        }
+        return FunctionToolClass._run_dockerized_code(code)
 
     @staticmethod
     def tool_mapping() -> dict[str, Callable]:
