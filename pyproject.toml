@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-myagent = "coding_assistant.cli:main"
+myassistant = "coding_assistant.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

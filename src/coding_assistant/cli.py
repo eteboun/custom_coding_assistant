@@ -23,4 +23,6 @@ def main():
         if query in {"exit", "quit"}:
             break
 
-        return assistant_.run(query=query)
+        print(
+            assistant_.run(query=query)
+        )
