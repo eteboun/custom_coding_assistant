@@ -1,12 +1,12 @@
 import subprocess
 import ast
 import inspect
+import json
 
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
 
-from config import repo_path
 from tools.schemas import Symbol, SymbolKind, ToolSchema
 from tools.utils import (_symbol_matches,
                          _search_files_containing_terms, _parse_python_file,
@@ -14,106 +14,14 @@ from tools.utils import (_symbol_matches,
 
 class Tools:
 
-    @staticmethod
-    def tool(
-            tool_description: str,
-            property_descriptions: dict,
-            additional_properties: bool
-    ) -> Callable:
+    def __init__(self, repo_path: Path):
+        self.repo_path = repo_path
 
-        def decorator(func):
+        self.mapping = self._tool_mapping()
+        self.datas = self._tool_datas()
 
-            tool_data = ToolSchema.from_func(
-                func=func,
-                tool_description=tool_description,
-                property_descriptions=property_descriptions,
-                additional_properties=additional_properties
-            )
-
-            func.is_tool = True
-            func.tool_data = tool_data.serialize()
-
-            return func
-
-        return decorator
-
-    @staticmethod
-    @tool(
-        tool_description=(
-                "Read a known text file, optionally within a line range. "
-                "Use directly when the file path is provided or already known."
-        ),
-        property_descriptions={
-            "path": "Repository-relative file path.",
-            "start_line": "Optional 1-based starting line.",
-            "end_line": "Optional 1-based ending line, inclusive.",
-        },
-        additional_properties=False,
-    )
-    def read_file(
-        path: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict:
-        resolved_file = _resolve_file(path)
-
-        if resolved_file["status"] == "error":
-            return resolved_file
-
-        full_path = resolved_file["content"]
-
-        with open(full_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-        start = start_line - 1 if start_line is not None else 0
-        end = end_line if end_line is not None else len(lines)
-
-        numbered_line_group = zip(
-            range(start + 1, end + 1),
-            lines[start:end]
-        )
-
-        numbered_lines = []
-        for num, line in numbered_line_group:
-            numbered_lines.append(
-                f"{num} | {line}"
-            )
-
-        return {
-            "status": "success",
-            "content": "".join(numbered_lines)
-        }
-
-    @staticmethod
-    @tool(
-        tool_description=(
-                "List files and directories inside a known repository directory. "
-                "Use only when the relevant file or directory entry is unknown. "
-                "Never use this tool to verify, locate, or inspect a file path explicitly provided by the user."
-        ),
-        property_descriptions={
-            "path": "Repository-relative directory path. Use '.' for the root."
-        },
-        additional_properties=False,
-    )
-    def list_files(path: str) -> dict:
-        resolved_path = _resolve_dir(path)
-
-        if resolved_path["status"] == "error":
-            return resolved_path
-
-        full_path = resolved_path["content"]
-
-        return {
-            "status": "success",
-            "content": [
-                e.name
-                for e in full_path.iterdir()
-            ]
-        }
-
-    @staticmethod
     def _walk_symbols(
+            self,
             node: ast.AST,
             path: Path,
             search_notation: str,
@@ -150,7 +58,7 @@ class Tools:
                         )
                     )
 
-                symbols += Tools._walk_symbols(
+                symbols += self._walk_symbols(
                     node=child,
                     curr_notation=next_notation,
                     parent_kind=SymbolKind.CLASS,
@@ -194,7 +102,7 @@ class Tools:
                         )
                     )
 
-                symbols += Tools._walk_symbols(
+                symbols += self._walk_symbols(
                     node=child,
                     curr_notation=next_notation,
                     parent_kind=kind,
@@ -205,8 +113,7 @@ class Tools:
 
         return symbols
 
-    @staticmethod
-    def _run_docker(command: list[str]) -> dict:
+    def _run_docker(self, command: list[str]) -> dict:
         docker_command = [
             "docker",
             "run",
@@ -226,7 +133,7 @@ class Tools:
             "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
 
             "--mount",
-            f"type=bind,source={repo_path},target=/workspace,readonly",
+            f"type=bind,source={self.repo_path},target=/workspace,readonly",
 
             "--workdir", "/workspace",
 
@@ -261,25 +168,135 @@ class Tools:
             },
         }
 
-    @staticmethod
-    def _run_dockerized_file(path: Path) -> dict:
-        relative_path = path.relative_to(repo_path)
+    def _run_dockerized_file(self, path: Path) -> dict:
+        relative_path = path.relative_to(self.repo_path)
 
-        return Tools._run_docker([
+        return self._run_docker([
             "python",
             relative_path.as_posix(),
         ])
 
-    @staticmethod
-    def _run_dockerized_code(code: str) -> dict:
-        return Tools._run_docker([
+    def _run_dockerized_code(self, code: str) -> dict:
+        return self._run_docker([
             "python",
             "-c",
             code,
         ])
 
+    def _tool_mapping(self) -> dict[str, Callable]:
+
+        return {
+            func.__name__: func
+            for _, func in inspect.getmembers(self, predicate=inspect.ismethod)
+            if getattr(func, "is_tool", False)
+        }
+
+    def _tool_datas(self) -> list:
+
+        return [
+            func.tool_data
+            for _, func in inspect.getmembers(self, predicate=inspect.ismethod)
+            if getattr(func, "is_tool", False)
+        ]
+
     @staticmethod
-    @tool(
+    def _tool(
+            tool_description: str,
+            property_descriptions: dict,
+            additional_properties: bool
+    ) -> Callable:
+
+        def decorator(func):
+
+            tool_data = ToolSchema.from_func(
+                func=func,
+                tool_description=tool_description,
+                property_descriptions=property_descriptions,
+                additional_properties=additional_properties
+            )
+
+            func.is_tool = True
+            func.tool_data = tool_data.serialize()
+
+            return func
+
+        return decorator
+
+    @_tool(
+        tool_description=(
+                "Read a known text file, optionally within a line range. "
+                "Use directly when the file path is provided or already known."
+        ),
+        property_descriptions={
+            "path": "Repository-relative file path.",
+            "start_line": "Optional 1-based starting line.",
+            "end_line": "Optional 1-based ending line, inclusive.",
+        },
+        additional_properties=False,
+    )
+    def read_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict:
+        resolved_file = _resolve_file(path, self.repo_path)
+
+        if resolved_file["status"] == "error":
+            return resolved_file
+
+        full_path = resolved_file["content"]
+
+        with open(full_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        start = start_line - 1 if start_line is not None else 0
+        end = end_line if end_line is not None else len(lines)
+
+        numbered_line_group = zip(
+            range(start + 1, end + 1),
+            lines[start:end]
+        )
+
+        numbered_lines = []
+        for num, line in numbered_line_group:
+            numbered_lines.append(
+                f"{num} | {line}"
+            )
+
+        return {
+            "status": "success",
+            "content": "".join(numbered_lines)
+        }
+
+    @_tool(
+        tool_description=(
+                "List files and directories inside a known repository directory. "
+                "Use only when the relevant file or directory entry is unknown. "
+                "Never use this tool to verify, locate, or inspect a file path explicitly provided by the user."
+        ),
+        property_descriptions={
+            "path": "Repository-relative directory path. Use '.' for the root."
+        },
+        additional_properties=False,
+    )
+    def list_files(self, path: str) -> dict:
+        resolved_path = _resolve_dir(path, self.repo_path)
+
+        if resolved_path["status"] == "error":
+            return resolved_path
+
+        full_path = resolved_path["content"]
+
+        return {
+            "status": "success",
+            "content": [
+                e.name
+                for e in full_path.iterdir()
+            ]
+        }
+
+    @_tool(
         tool_description=(
             "Search repository contents for text or regex matches when the location is unknown. "
             "Do not use to locate or verify a user-provided file path."
@@ -291,11 +308,12 @@ class Tools:
         },
         additional_properties=False,
     )
-    def search_symbol(notation: str) -> dict:
+    def search_symbol(self, notation: str) -> dict:
 
         full_paths = _search_files_containing_terms(
             notation.split("."),
             extension=".py",
+            repo_path=self.repo_path
         )
 
         symbols: list[dict] = []
@@ -308,16 +326,16 @@ class Tools:
                 tree = _parse_python_file(path=full_path)
             except SyntaxError:
                 errors.append(
-                    f"Failed to parse Python file: {full_path.relative_to(repo_path).as_posix()}"
+                    f"Failed to parse Python file: {full_path.relative_to(self.repo_path).as_posix()}"
                 )
                 continue
 
             symbols.extend(
                 symbol.serialize()
-                for symbol in Tools._walk_symbols(
+                for symbol in self._walk_symbols(
                     search_notation=notation,
                     allow_unqualified=allow_unqualified,
-                    path=full_path.relative_to(repo_path),
+                    path=full_path.relative_to(self.repo_path),
                     node=tree,
                 )
             )
@@ -332,8 +350,7 @@ class Tools:
 
         return result
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
                 "Read a Python symbol when both its file path and exact qualified name are known."
         ),
@@ -345,9 +362,9 @@ class Tools:
         },
         additional_properties=False,
     )
-    def read_symbol(path: str, notation: str) -> dict:
+    def read_symbol(self, path: str, notation: str) -> dict:
 
-        resolved_file = _resolve_file(path)
+        resolved_file = _resolve_file(path, self.repo_path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -359,13 +376,13 @@ class Tools:
         except SyntaxError:
             return {
                 "status": "error",
-                "message": f"Failed to parse Python file: {full_path.relative_to(repo_path).as_posix()}"
+                "message": f"Failed to parse Python file: {full_path.relative_to(self.repo_path).as_posix()}"
             }
 
-        symbols = Tools._walk_symbols(
+        symbols = self._walk_symbols(
             search_notation=notation,
             allow_unqualified=False,
-            path=full_path.relative_to(repo_path),
+            path=full_path.relative_to(self.repo_path),
             node=tree
         )
 
@@ -400,8 +417,7 @@ class Tools:
             }
         }
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
             "Search repository contents for text or regex matches. "
             "Returns file paths, line numbers, and matching lines. "
@@ -412,10 +428,10 @@ class Tools:
         },
         additional_properties=False,
     )
-    def search_code(query: str) -> str:
+    def search_code(self, query: str) -> str:
         try:
             process = subprocess.run(
-                ["rg", "-n", query, str(repo_path)],
+                ["rg", "-n", query, self.repo_path.as_posix()],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -433,8 +449,7 @@ class Tools:
         else:
             return f"An error occurred: {process.stderr}"
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
                 "Replace an exact piece of existing file content. "
                 "The text must occur exactly once within the selected line range. "
@@ -457,6 +472,7 @@ class Tools:
         additional_properties=False,
     )
     def replace_in_file(
+        self,
         path: str,
         old_text: str,
         new_text: str,
@@ -464,7 +480,7 @@ class Tools:
         end_line: int | None = None,
     ) -> dict:
 
-        resolved_file = _resolve_file(path)
+        resolved_file = _resolve_file(path, self.repo_path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -514,8 +530,7 @@ class Tools:
             }
         }
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
             "Create a new file. Fails if the path already exists."
         ),
@@ -526,10 +541,11 @@ class Tools:
         additional_properties=False,
     )
     def create_file(
+        self,
         path: str,
         content: str,
     ) -> dict:
-        resolved_path = _resolve_path(path)
+        resolved_path = _resolve_path(path, self.repo_path)
 
         if resolved_path["status"] == "error":
             return resolved_path
@@ -552,16 +568,15 @@ class Tools:
             }
         }
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description="Deletes the file with provided path.",
         property_descriptions={
             "path": "Repository-relative path for the file to be deleted.",
         },
         additional_properties=False
     )
-    def delete_file(path: str) -> dict:
-        resolved_file = _resolve_path(path)
+    def delete_file(self, path: str) -> dict:
+        resolved_file = _resolve_path(path, self.repo_path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -577,8 +592,7 @@ class Tools:
             }
         }
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
                 "Runs a command in an isolated Docker container "
                 "with the repository as the working directory."
@@ -591,13 +605,12 @@ class Tools:
         },
         additional_properties=False
     )
-    def run_command(command: list[str]) -> dict:
-        return Tools._run_docker(
+    def run_command(self, command: list[str]) -> dict:
+        return self._run_docker(
             command=command
         )
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
                 "Show the repository structure for broad exploration when relevant files are unknown. "
                 "Never use this tool when the user has already provided the file path needed for the task."
@@ -605,13 +618,13 @@ class Tools:
         property_descriptions={},
         additional_properties=False,
     )
-    def repo_tree() -> dict:
+    def repo_tree(self) -> dict:
         files = []
 
-        for path in repo_path.rglob("*"):
-            relative_path = path.relative_to(repo_path)
+        for path in self.repo_path.rglob("*"):
+            relative_path = path.relative_to(self.repo_path)
 
-            if _is_allowed_filepath(path):
+            if _is_allowed_filepath(path, self.repo_path):
                 files.append(relative_path.as_posix())
 
         return {
@@ -619,17 +632,16 @@ class Tools:
             "content": files,
         }
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description="Run a Python script.",
         property_descriptions={
             "path": "Repository-relative file path."
         },
         additional_properties=False,
     )
-    def run_python_file(path: str) -> dict:
+    def run_python_file(self, path: str) -> dict:
 
-        resolved_file = _resolve_file(path)
+        resolved_file = _resolve_file(path, self.repo_path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -642,12 +654,11 @@ class Tools:
                 "message": f"File {full_path} is not a Python file"
             }
 
-        return Tools._run_dockerized_file(
+        return self._run_dockerized_file(
             path=full_path
         )
 
-    @staticmethod
-    @tool(
+    @_tool(
         tool_description=(
                     "Execute Python code from the repository root and return "
                     "its exit code, stdout, and stderr."
@@ -657,26 +668,8 @@ class Tools:
         },
         additional_properties=False,
     )
-    def run_python_code(code: str) -> dict:
-        return Tools._run_dockerized_code(code)
-
-    @staticmethod
-    def tool_mapping() -> dict[str, Callable]:
-
-        return {
-            func.__name__: func
-            for _, func in inspect.getmembers(Tools, predicate=inspect.isfunction)
-            if getattr(func, "is_tool", False)
-        }
-
-    @staticmethod
-    def tools() -> list:
-
-        return [
-            func.tool_data
-            for _, func in inspect.getmembers(Tools, predicate=inspect.isfunction)
-            if getattr(func, "is_tool", False)
-        ]
+    def run_python_code(self, code: str) -> dict:
+        return self._run_dockerized_code(code)
 
 @dataclass(frozen=True)
 class ToolOutput:
@@ -690,17 +683,22 @@ class ToolOutput:
             "output": self.output
         }
 
-
 @dataclass(frozen=True)
 class ToolCall:
-    tool: str
+    name: str
     args: dict
     call_id: str
 
-    def execute(self) -> ToolOutput:
-        result = Tools.tool_mapping()[self.tool](**self.args)
+    def execute(self, tools: Tools) -> ToolOutput:
+        if self.name not in tools.mapping:
+            output = {
+                "status": "error",
+                "message": f"tool {self.name} not found",
+            }
+        else:
+            output = tools.mapping[self.name](**self.args)
 
         return ToolOutput(
             call_id=self.call_id,
-            output=str(result)
+            output=json.dumps(output),
         )

@@ -3,8 +3,6 @@ import ast
 from pathlib import Path
 from typing import Any, get_args
 
-from config import repo_path
-
 _BLOCKED_FILES = {
     ".env",
 }
@@ -18,7 +16,7 @@ _BLOCKED_DIRS = {
     "logs"
 }
 
-def _resolve_path(path: str) -> dict:
+def _resolve_path(path: str, repo_path: Path) -> dict:
     full_path = (repo_path / path).resolve()
 
     if not full_path.is_relative_to(repo_path):
@@ -46,8 +44,8 @@ def _resolve_path(path: str) -> dict:
         "content": full_path
     }
 
-def _resolve_dir(path: str) -> dict:
-    resolved_path = _resolve_path(path)
+def _resolve_dir(path: str, repo_path: Path) -> dict:
+    resolved_path = _resolve_path(path, repo_path)
 
     if resolved_path["status"] == "error":
         return resolved_path
@@ -71,8 +69,8 @@ def _resolve_dir(path: str) -> dict:
         "content": full_path,
     }
 
-def _resolve_file(path: str) -> dict:
-    resolved_path = _resolve_path(path)
+def _resolve_file(path: str, repo_path: Path) -> dict:
+    resolved_path = _resolve_path(path, repo_path)
 
     if resolved_path["status"] == "error":
         return resolved_path
@@ -96,8 +94,8 @@ def _resolve_file(path: str) -> dict:
         "content": full_path,
     }
 
-def _is_allowed_filepath(path: Path) -> bool:
-    resolved_file = _resolve_file(path.as_posix())
+def _is_allowed_filepath(path: Path, repo_path: Path) -> bool:
+    resolved_file = _resolve_file(path.as_posix(), repo_path)
     return resolved_file["status"] == "success"
 
 def _parse_python_file(path: Path) -> ast.Module:
@@ -120,6 +118,7 @@ def _symbol_matches(
 
 def _search_files_containing_terms(
     terms: list[str],
+    repo_path: Path,
     extension: str = ".py",
 ) -> list[Path]:
 
@@ -127,7 +126,7 @@ def _search_files_containing_terms(
 
     for path in repo_path.rglob(f"*{extension}"):
         relative_path = path.relative_to(repo_path)
-        resolved_file = _resolve_file(relative_path.as_posix())
+        resolved_file = _resolve_file(relative_path.as_posix(), repo_path)
 
         if resolved_file["status"] == "error":
             continue

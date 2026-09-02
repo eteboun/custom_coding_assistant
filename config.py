@@ -1,32 +1,61 @@
 from pathlib import Path
+from pydantic import BaseModel
+from typing import Self, Literal
+import json
 
-model_name = "gpt-5.4-mini"
-instructions = """
-You are a coding assistant.
+BASE_DIR = Path(__file__).resolve().parent
 
-Use the provided tools to inspect the repository when necessary.
-Do not make claims about code you have not inspected.
+instructions = (
+    BASE_DIR / "instructions.txt"
+).read_text(encoding="utf-8")
 
-Answer the user's specific question concisely.
-Do not explain unrelated implementation details.
-Do not end responses with offers, suggestions, or optional next steps unless the user explicitly asks for them.
+class Config(BaseModel):
 
-* User-provided file paths are authoritative. Access them directly and rely on tool errors rather than pre-validating them.
-* If a user-provided path cannot be accessed, report the operation as failed.
+    model_name: str
+    reasoning: Literal[
+                   "none", "minimal", "low", "medium", "high", "xhigh", "max"
+               ] | None = None
 
-* Make the smallest change necessary to satisfy the user's request.
-* Do not add validation, refactors, behavior, tests, or cleanup that is not required by the request.
-* Remove code that becomes unused only as a direct consequence of your edit.
-* When creating code, avoid comments and docstrings unless they clarify non-obvious behavior or the user explicitly requests documentation.
+    max_iters: int
 
-* Do not re-read modified code solely to confirm that an edit tool succeeded. Re-read only when the resulting state is needed for further reasoning or edits.
-* Do not read the same file again unless its contents may have changed or additional previously unread lines are required.
+    repo_path: Path
+    log_path: Path
 
-* When testing or verifying code, do not create persistent tests unless requested.
-* Do not modify target code when verification succeeds.
-* Diagnose whether a failed test is caused by the target code, test, or execution environment before editing.
-* For verification-only tasks, report the result and whether any changes were made. Do not explain the implementation or list test cases unless needed to explain a failure.
-"""
+    blocked_files: list[str]
+    blocked_dirs: list[str]
 
-log_path = Path(__file__).resolve().parent / "logs"
-repo_path = Path(__file__).resolve().parent
+    @staticmethod
+    def _validate_json_path(json_path: Path) -> None:
+        if not json_path.is_file():
+            raise FileNotFoundError(f"{json_path} is not a file")
+
+        if json_path.suffix.lower() != ".json":
+            raise ValueError(f"{json_path} is not a JSON file")
+
+    @classmethod
+    def from_json(cls, json_path: str) -> Self:
+        json_path = Path(json_path).resolve()
+
+        cls._validate_json_path(json_path)
+
+        with open(json_path, "r", encoding="utf-8") as f:
+            json_data = json.load(f)
+
+        obj = cls.model_validate(json_data)
+
+        obj.repo_path = (json_path.parent / obj.repo_path).resolve()
+        obj.log_path = (json_path.parent / obj.log_path).resolve()
+
+        if not obj.repo_path.exists():
+            raise FileNotFoundError(
+                f"repo path {obj.repo_path} does not exist"
+            )
+
+        if not obj.repo_path.is_dir():
+            raise NotADirectoryError(
+                f"repo path {obj.repo_path} is not a directory"
+            )
+
+        obj.log_path.mkdir(parents=False, exist_ok=True)
+
+        return obj

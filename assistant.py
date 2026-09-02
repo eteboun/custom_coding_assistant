@@ -3,9 +3,9 @@ from openai.types.responses import Response
 from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
-from config import model_name, instructions
 from tools.content import Tools, ToolCall
 from logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog
+from config import Config, instructions
 
 import json
 
@@ -13,20 +13,16 @@ load_dotenv()
 
 class Assistant:
 
-    def __init__(self,
-                 model_name: str,
-                 instructions: str,
-                 tools: list,
-                 max_iters: int
-                 ) -> None:
-        self.model_name = model_name
+    def __init__(self, config_path: str) -> None:
+        self.config = Config.from_json(config_path)
         self.instructions = instructions
-        self.tools = tools
-        self.max_iters = max_iters
+
+        self.tools = Tools(repo_path=self.config.repo_path)
 
         self.reasoning = Reasoning(
-            effort="low",
+            effort=self.config.reasoning,
         )
+
         self.client = OpenAI()
 
     @staticmethod
@@ -35,18 +31,18 @@ class Assistant:
 
     def _llm_initial_call(self, query: str) -> Response:
         return self.client.responses.create(
-            model=self.model_name,
+            model=self.config.model_name,
             instructions=self.instructions,
             input=query,
-            tools=self.tools,
+            tools=self.tools.datas,
             reasoning=self.reasoning
         )
 
     def _llm_next_call(self, input_: list[dict], prev_id: str) -> Response:
         return self.client.responses.create(
-            model=self.model_name,
+            model=self.config.model_name,
             instructions=self.instructions,
-            tools=self.tools,
+            tools=self.tools.datas,
             input=input_,
             previous_response_id=prev_id,
             reasoning=self.reasoning,
@@ -59,7 +55,7 @@ class Assistant:
             if item.type == "function_call":
                 tool_calls.append(
                     ToolCall(
-                        tool=item.name,
+                        name=item.name,
                         args=self._args_to_dict(item.arguments),
                         call_id=item.call_id
                     )
@@ -69,12 +65,15 @@ class Assistant:
 
     def run(self, query: str) -> str:
 
-        session_logger = SessionLogger(query=query)
+        session_logger = SessionLogger(
+            query=query,
+            log_path=self.config.log_path
+        )
 
         try:
             response = self._llm_initial_call(query=query)
 
-            for _ in range(self.max_iters):
+            for _ in range(self.config.max_iters):
                 tool_calls = self._tool_calls(
                     response=response
                 )
@@ -110,7 +109,7 @@ class Assistant:
                         reasoning_tokens=reasoning_tokens,
                         tool_calls=[
                             ToolCallLog(
-                                name=call.tool,
+                                name=call.name,
                                 args=call.args
                             )
                             for call in tool_calls
@@ -119,28 +118,21 @@ class Assistant:
                 )
 
                 serialized_outputs = [
-                    tool.execute().serialize()
+                    tool.execute(tools=self.tools).serialize()
                     for tool in tool_calls
                 ]
 
                 response = self.client.responses.create(
-                    model=self.model_name,
-                    tools=self.tools,
+                    model=self.config.model_name,
+                    tools=self.tools.datas,
                     input=serialized_outputs,
                     previous_response_id=response.id,
                 )
 
             raise RuntimeError(
-                f"Maximum iteration limit reached: {self.max_iters}"
+                f"Maximum iteration limit reached: {self.config.max_iters}"
             )
 
         finally:
             if session_logger.llm_calls:
                 session_logger.log()
-
-assistant = Assistant(
-    model_name=model_name,
-    instructions=instructions,
-    tools=Tools.tools(),
-    max_iters=10
-)

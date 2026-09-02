@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from config import log_path
+from pathlib import Path
 import json
 
 @dataclass
@@ -52,6 +52,8 @@ class LLMFinalCallLog(LLMCallLog):
 
 @dataclass
 class SessionLogger:
+    log_path: Path
+
     query: str
     llm_calls: list[LLMCallLog] = field(default_factory=list)
 
@@ -86,10 +88,10 @@ class SessionLogger:
         }
 
     def log(self) -> None:
-        log_path.mkdir(parents=True, exist_ok=True)
+        self.log_path.mkdir(parents=True, exist_ok=True)
 
         name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         data = self.serialize()
 
-        with open(log_path / f"{name}.json", "w", encoding="utf-8") as f:
+        with open(self.log_path / f"{name}.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
