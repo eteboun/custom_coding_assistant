@@ -7,111 +7,26 @@ from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
 
-from tools.schemas import Symbol, SymbolKind, ToolSchema
-from tools.utils import (_symbol_matches,
-                         _search_files_containing_terms, _parse_python_file,
-                         _is_allowed_filepath, _resolve_file, _resolve_dir, _resolve_path)
+from .schemas import Symbol, SymbolKind, ToolSchema
+from .utils import symbol_matches, parse_python_file, Pather
 
 class Tools:
 
-    def __init__(self, repo_path: Path):
+    def __init__(self,
+                 repo_path: Path,
+                 blocked_files: list[str],
+                 blocked_dirs: list[str]
+                 ) -> None:
+
+        self.pather = Pather(
+            repo_path=repo_path,
+            blocked_files=blocked_files,
+            blocked_dirs=blocked_dirs
+        )
         self.repo_path = repo_path
 
         self.mapping = self._tool_mapping()
         self.datas = self._tool_datas()
-
-    def _walk_symbols(
-            self,
-            node: ast.AST,
-            path: Path,
-            search_notation: str,
-            allow_unqualified: bool,
-            curr_notation: str | None = None,
-            parent_kind: SymbolKind | None = None,
-    ) -> list[Symbol]:
-        symbols: list[Symbol] = []
-
-        for child in ast.iter_child_nodes(node):
-
-            if isinstance(child, ast.ClassDef):
-                name = child.name
-                next_notation = (
-                    f"{curr_notation}.{name}"
-                    if curr_notation is not None
-                    else name
-                )
-
-                if _symbol_matches(
-                    name=name,
-                    notation=next_notation,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                ):
-                    assert child.end_lineno is not None
-                    symbols.append(
-                        Symbol(
-                            path=path,
-                            notation=next_notation,
-                            kind=SymbolKind.CLASS,
-                            start_line=child.lineno,
-                            end_line=child.end_lineno,
-                        )
-                    )
-
-                symbols += self._walk_symbols(
-                    node=child,
-                    curr_notation=next_notation,
-                    parent_kind=SymbolKind.CLASS,
-                    path=path,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified
-                )
-
-            elif (
-                    isinstance(child, ast.FunctionDef)
-                    or isinstance(child, ast.AsyncFunctionDef)
-            ):
-                name = child.name
-
-                next_notation = (
-                    f"{curr_notation}.{name}"
-                    if curr_notation is not None
-                    else name
-                )
-
-                kind = (
-                    SymbolKind.METHOD
-                    if parent_kind == SymbolKind.CLASS
-                    else SymbolKind.FUNCTION
-                )
-
-                if _symbol_matches(
-                    name=name,
-                    notation=next_notation,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                ):
-                    assert child.end_lineno is not None
-                    symbols.append(
-                        Symbol(
-                            path=path,
-                            notation=next_notation,
-                            kind=kind,
-                            start_line=child.lineno,
-                            end_line=child.end_lineno,
-                        )
-                    )
-
-                symbols += self._walk_symbols(
-                    node=child,
-                    curr_notation=next_notation,
-                    parent_kind=kind,
-                    path=path,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                )
-
-        return symbols
 
     def _run_docker(self, command: list[str]) -> dict:
         docker_command = [
@@ -183,6 +98,99 @@ class Tools:
             code,
         ])
 
+    def _walk_symbols(
+            self,
+            node: ast.AST,
+            path: Path,
+            search_notation: str,
+            allow_unqualified: bool,
+            curr_notation: str | None = None,
+            parent_kind: SymbolKind | None = None,
+    ) -> list[Symbol]:
+        symbols: list[Symbol] = []
+
+        for child in ast.iter_child_nodes(node):
+
+            if isinstance(child, ast.ClassDef):
+                name = child.name
+                next_notation = (
+                    f"{curr_notation}.{name}"
+                    if curr_notation is not None
+                    else name
+                )
+
+                if symbol_matches(
+                    name=name,
+                    notation=next_notation,
+                    search_notation=search_notation,
+                    allow_unqualified=allow_unqualified,
+                ):
+                    assert child.end_lineno is not None
+                    symbols.append(
+                        Symbol(
+                            path=path,
+                            notation=next_notation,
+                            kind=SymbolKind.CLASS,
+                            start_line=child.lineno,
+                            end_line=child.end_lineno,
+                        )
+                    )
+
+                symbols += self._walk_symbols(
+                    node=child,
+                    curr_notation=next_notation,
+                    parent_kind=SymbolKind.CLASS,
+                    path=path,
+                    search_notation=search_notation,
+                    allow_unqualified=allow_unqualified
+                )
+
+            elif (
+                    isinstance(child, ast.FunctionDef)
+                    or isinstance(child, ast.AsyncFunctionDef)
+            ):
+                name = child.name
+
+                next_notation = (
+                    f"{curr_notation}.{name}"
+                    if curr_notation is not None
+                    else name
+                )
+
+                kind = (
+                    SymbolKind.METHOD
+                    if parent_kind == SymbolKind.CLASS
+                    else SymbolKind.FUNCTION
+                )
+
+                if symbol_matches(
+                    name=name,
+                    notation=next_notation,
+                    search_notation=search_notation,
+                    allow_unqualified=allow_unqualified,
+                ):
+                    assert child.end_lineno is not None
+                    symbols.append(
+                        Symbol(
+                            path=path,
+                            notation=next_notation,
+                            kind=kind,
+                            start_line=child.lineno,
+                            end_line=child.end_lineno,
+                        )
+                    )
+
+                symbols += self._walk_symbols(
+                    node=child,
+                    curr_notation=next_notation,
+                    parent_kind=kind,
+                    path=path,
+                    search_notation=search_notation,
+                    allow_unqualified=allow_unqualified,
+                )
+
+        return symbols
+
     def _tool_mapping(self) -> dict[str, Callable]:
 
         return {
@@ -240,7 +248,7 @@ class Tools:
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> dict:
-        resolved_file = _resolve_file(path, self.repo_path)
+        resolved_file = self.pather.resolve_file(path=path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -281,12 +289,12 @@ class Tools:
         additional_properties=False,
     )
     def list_files(self, path: str) -> dict:
-        resolved_path = _resolve_dir(path, self.repo_path)
+        resolved_dir = self.pather.resolve_dir(path=path)
 
-        if resolved_path["status"] == "error":
-            return resolved_path
+        if resolved_dir["status"] == "error":
+            return resolved_dir
 
-        full_path = resolved_path["content"]
+        full_path = resolved_dir["content"]
 
         return {
             "status": "success",
@@ -310,10 +318,9 @@ class Tools:
     )
     def search_symbol(self, notation: str) -> dict:
 
-        full_paths = _search_files_containing_terms(
+        full_paths = self.pather.search_files_containing_terms(
             notation.split("."),
-            extension=".py",
-            repo_path=self.repo_path
+            extension=".py"
         )
 
         symbols: list[dict] = []
@@ -323,7 +330,7 @@ class Tools:
         for full_path in full_paths:
 
             try:
-                tree = _parse_python_file(path=full_path)
+                tree = parse_python_file(path=full_path)
             except SyntaxError:
                 errors.append(
                     f"Failed to parse Python file: {full_path.relative_to(self.repo_path).as_posix()}"
@@ -364,7 +371,7 @@ class Tools:
     )
     def read_symbol(self, path: str, notation: str) -> dict:
 
-        resolved_file = _resolve_file(path, self.repo_path)
+        resolved_file = self.pather.resolve_file(path=path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -372,11 +379,13 @@ class Tools:
         full_path = resolved_file["content"]
 
         try:
-            tree = _parse_python_file(path=full_path)
+            tree = parse_python_file(path=full_path)
         except SyntaxError:
             return {
                 "status": "error",
-                "message": f"Failed to parse Python file: {full_path.relative_to(self.repo_path).as_posix()}"
+                "message": f"Failed to parse Python file: {
+                    full_path.relative_to(self.repo_path).as_posix()
+                }"
             }
 
         symbols = self._walk_symbols(
@@ -480,7 +489,7 @@ class Tools:
         end_line: int | None = None,
     ) -> dict:
 
-        resolved_file = _resolve_file(path, self.repo_path)
+        resolved_file = self.pather.resolve_file(path=path)
 
         if resolved_file["status"] == "error":
             return resolved_file
@@ -545,7 +554,7 @@ class Tools:
         path: str,
         content: str,
     ) -> dict:
-        resolved_path = _resolve_path(path, self.repo_path)
+        resolved_path = self.pather.resolve_path(path=path)
 
         if resolved_path["status"] == "error":
             return resolved_path
@@ -576,12 +585,12 @@ class Tools:
         additional_properties=False
     )
     def delete_file(self, path: str) -> dict:
-        resolved_file = _resolve_path(path, self.repo_path)
+        resolved_path = self.pather.resolve_path(path=path)
 
-        if resolved_file["status"] == "error":
-            return resolved_file
+        if resolved_path["status"] == "error":
+            return resolved_path
 
-        full_path = resolved_file["content"]
+        full_path = resolved_path["content"]
 
         full_path.unlink()
 
@@ -624,7 +633,7 @@ class Tools:
         for path in self.repo_path.rglob("*"):
             relative_path = path.relative_to(self.repo_path)
 
-            if _is_allowed_filepath(path, self.repo_path):
+            if self.pather.is_allowed_filepath(path=path):
                 files.append(relative_path.as_posix())
 
         return {
@@ -641,7 +650,7 @@ class Tools:
     )
     def run_python_file(self, path: str) -> dict:
 
-        resolved_file = _resolve_file(path, self.repo_path)
+        resolved_file = self.pather.resolve_file(path=path)
 
         if resolved_file["status"] == "error":
             return resolved_file

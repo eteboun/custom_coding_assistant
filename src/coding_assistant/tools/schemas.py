@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Self
 
-from tools.utils import  _to_json_schema_type
+from .utils import to_json_schema_type
 
 class SymbolKind(StrEnum):
     METHOD = "method"
@@ -75,7 +75,7 @@ class Parameters:
             if name == "self":
                 continue
 
-            types = _to_json_schema_type(param.annotation)
+            types = to_json_schema_type(param.annotation)
 
             description = property_descriptions.get(name)
             if description is None:

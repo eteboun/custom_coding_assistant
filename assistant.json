@@ -1,0 +1,22 @@
+{
+
+    "model_name": "gpt-5.4-mini",
+    "reasoning": "low",
+
+    "max_iters": 10,
+
+    "log_path": "./logs",
+
+    "blocked_files": [
+        ".env"
+    ],
+
+    "blocked_dirs": [
+        ".git",
+        ".venv",
+        ".idea",
+        "venv",
+        "__pycache__",
+        "logs"
+    ]
+}

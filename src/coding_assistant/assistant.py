@@ -3,21 +3,28 @@ from openai.types.responses import Response
 from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
-from tools.content import Tools, ToolCall
-from logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog
-from config import Config, instructions
+from .tools.content import Tools, ToolCall
+from .logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog
+from .config import Config, instructions
 
 import json
+from pathlib import Path
 
 load_dotenv()
 
 class Assistant:
 
-    def __init__(self, config_path: str) -> None:
-        self.config = Config.from_json(config_path)
+    def __init__(self, repo_path: Path, config: Config) -> None:
+        self.repo_path = repo_path
+        self.config = config
+
         self.instructions = instructions
 
-        self.tools = Tools(repo_path=self.config.repo_path)
+        self.tools = Tools(
+            repo_path=self.repo_path,
+            blocked_files=self.config.blocked_files,
+            blocked_dirs=self.config.blocked_dirs
+        )
 
         self.reasoning = Reasoning(
             effort=self.config.reasoning,

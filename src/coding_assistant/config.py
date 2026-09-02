@@ -3,11 +3,13 @@ from pydantic import BaseModel
 from typing import Self, Literal
 import json
 
-BASE_DIR = Path(__file__).resolve().parent
+_BASE_DIR = Path(__file__).resolve().parent
 
 instructions = (
-    BASE_DIR / "instructions.txt"
+    _BASE_DIR / "instructions.txt"
 ).read_text(encoding="utf-8")
+
+config_filename = "assistant.json"
 
 class Config(BaseModel):
 
@@ -18,7 +20,6 @@ class Config(BaseModel):
 
     max_iters: int
 
-    repo_path: Path
     log_path: Path
 
     blocked_files: list[str]
@@ -43,19 +44,7 @@ class Config(BaseModel):
 
         obj = cls.model_validate(json_data)
 
-        obj.repo_path = (json_path.parent / obj.repo_path).resolve()
         obj.log_path = (json_path.parent / obj.log_path).resolve()
-
-        if not obj.repo_path.exists():
-            raise FileNotFoundError(
-                f"repo path {obj.repo_path} does not exist"
-            )
-
-        if not obj.repo_path.is_dir():
-            raise NotADirectoryError(
-                f"repo path {obj.repo_path} is not a directory"
-            )
-
         obj.log_path.mkdir(parents=False, exist_ok=True)
 
         return obj

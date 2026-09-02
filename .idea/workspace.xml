@@ -4,14 +4,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="done with tools">
-      <change afterPath="$PROJECT_DIR$/instructions.txt" afterDir="false" />
+    <list default="true" id="10d236d6-98b3-4543-9f7b-7cafb4c2b159" name="Changes" comment="building cli">
+      <change afterPath="$PROJECT_DIR$/assistant.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/coding_assistant/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/coding_assistant/cli.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/coding_assistant/tools/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/coding_assistant/tools/utils.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/assistant.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/content.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tools/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/assistant.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/instructions.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/instructions.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/tools/content.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/coding_assistant/tools/schemas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/utils.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -65,6 +72,9 @@
 }</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\USER\Desktop\ai_projects\custom_coding_assistant\src\coding_agent" />
+      <recent name="C:\Users\USER\Desktop\ai_projects\custom_coding_assistant\src\i" />
+      <recent name="C:\Users\USER\Desktop\ai_projects\custom_coding_assistant\src" />
       <recent name="C:\Users\USER\Desktop\ai_projects\custom_coding_assistant\tools" />
     </key>
   </component>
@@ -195,7 +205,15 @@
       <option name="project" value="LOCAL" />
       <updated>1788278002882</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="building cli">
+      <option name="closed" value="true" />
+      <created>1788332890374</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1788332890374</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -213,6 +231,7 @@
     <MESSAGE value="NEED BETTER SYSTEM PROMPTS" />
     <MESSAGE value="added semi sandboxing with docker" />
     <MESSAGE value="done with tools" />
-    <option name="LAST_COMMIT_MESSAGE" value="done with tools" />
+    <MESSAGE value="building cli" />
+    <option name="LAST_COMMIT_MESSAGE" value="building cli" />
   </component>
 </project>
