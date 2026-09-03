@@ -236,7 +236,6 @@ class Tools:
     @_tool(
         tool_description=(
                 "Read a known text file, optionally within a line range. "
-                "Use directly when the file path is provided or already known."
         ),
         property_descriptions={
             "path": "Repository-relative file path.",
@@ -282,9 +281,7 @@ class Tools:
 
     @_tool(
         tool_description=(
-                "List files and directories inside a known repository directory. "
-                "Use only when the relevant file or directory entry is unknown. "
-                "Never use this tool to verify, locate, or inspect a file path explicitly provided by the user."
+                "List files and directories inside a known repository directory."
         ),
         property_descriptions={
             "path": "Repository-relative directory path. Use '.' for the root."
@@ -309,12 +306,14 @@ class Tools:
 
     @_tool(
         tool_description=(
-            "Search repository contents for text or regex matches when the location is unknown. "
-            "Do not use to locate or verify a user-provided file path."
+            "Search repository python files "
+            "for specific class or function names when the location is unknown. "
         ),
         property_descriptions={
             "notation": (
-                "Symbol name or qualified notation, e.g. 'run' or 'Assistant.run'."
+                "Class or function name with proper hierarchy. "
+                "E.g. 'run' for general search for the function 'run', "
+                "'Assistant.run' for the method 'run' in the 'Assistant' class."
             ),
         },
         additional_properties=False,
@@ -364,12 +363,15 @@ class Tools:
 
     @_tool(
         tool_description=(
-                "Read a Python symbol when both its file path and exact qualified name are known."
+                "Read a specific class or function data "
+                "when both its file path and exact qualified name are known."
         ),
         property_descriptions={
             "path": "Repository-relative Python file path.",
             "notation": (
-                "Exact qualified notation, e.g. 'Assistant.run' or 'Factory.losses'."
+                "Class or function name with proper hierarchy. "
+                "E.g. 'run' for general search for the function 'run', "
+                "'Assistant.run' for the method 'run' in the 'Assistant' class."
             ),
         },
         additional_properties=False,
@@ -434,8 +436,6 @@ class Tools:
     @_tool(
         tool_description=(
             "Search repository contents for text or regex matches. "
-            "Returns file paths, line numbers, and matching lines. "
-            "Use for known text or references, not file-name lookup."
         ),
         property_descriptions={
             "query": "Text or regular expression to search for."
@@ -483,8 +483,6 @@ class Tools:
                 "Replacement matches must not overlap. "
                 "All line ranges refer to the file state before any replacement is applied. "
                 "Use multiple replacement entries when making independent edits to the same file. "
-                "A successful result confirms that all replacements were applied; "
-                "do not re-read the file solely to verify them."
         ),
         property_descriptions={
             "path": (
@@ -747,7 +745,7 @@ class Tools:
 
     @_tool(
         tool_description=(
-            "Create a new file. Fails if the path already exists."
+            "Create a new file."
         ),
         property_descriptions={
             "path": "Repository-relative path for the new file.",
@@ -826,7 +824,6 @@ class Tools:
     @_tool(
         tool_description=(
                 "Show the repository structure for broad exploration when relevant files are unknown. "
-                "Never use this tool when the user has already provided the file path needed for the task."
         ),
         property_descriptions={},
         additional_properties=False,
@@ -873,8 +870,7 @@ class Tools:
 
     @_tool(
         tool_description=(
-                    "Execute Python code from the repository root and return "
-                    "its exit code, stdout, and stderr."
+                    "Execute Python code from the repository root."
         ),
         property_descriptions={
             "code": "Python code to execute."

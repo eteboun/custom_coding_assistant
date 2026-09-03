@@ -3,15 +3,19 @@ from datetime import datetime
 from pathlib import Path
 import json
 
+from .tools.utils import OutputProtocol
+
 @dataclass
 class ToolCallLog:
     name: str
     args: dict
+    output: OutputProtocol
 
     def serialize(self) -> dict:
         return {
             "name": self.name,
             "args": self.args,
+            "output": self.output.serialize()
         }
 
 @dataclass

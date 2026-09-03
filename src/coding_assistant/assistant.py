@@ -9,6 +9,7 @@ from .config import Config, instructions
 
 import json
 from pathlib import Path
+from functools import wraps
 
 load_dotenv()
 
@@ -31,6 +32,15 @@ class Assistant:
         )
 
         self.client = OpenAI()
+
+    @staticmethod
+    def _running(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            print("Assistant is now running...")
+            return func(self, *args, **kwargs)
+
+        return wrapper
 
     @staticmethod
     def _args_to_dict(args: str) -> dict:
@@ -70,6 +80,7 @@ class Assistant:
 
         return tool_calls
 
+    @_running
     def run(self, query: str) -> str:
 
         session_logger = SessionLogger(
@@ -109,6 +120,11 @@ class Assistant:
                     )
                     return response.output_text
 
+                outputs = [
+                    call.execute(tools=self.tools)
+                    for call in tool_calls
+                ]
+
                 session_logger.add_llm_call(
                     LLMToolCallLog(
                         input_tokens=input_tokens,
@@ -117,16 +133,19 @@ class Assistant:
                         tool_calls=[
                             ToolCallLog(
                                 name=call.name,
-                                args=call.args
+                                args=call.args,
+                                output=tool_output.output,
                             )
-                            for call in tool_calls
+                            for call, tool_output in zip(
+                                tool_calls, outputs
+                            )
                         ]
                     )
                 )
 
                 serialized_outputs = [
-                    tool.execute(tools=self.tools).serialize()
-                    for tool in tool_calls
+                    output.serialize()
+                    for output in outputs
                 ]
 
                 response = self.client.responses.create(
