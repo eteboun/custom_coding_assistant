@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, get_args, override
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
+from pydantic import BaseModel, ConfigDict, Field
 from enum import StrEnum
 
 class Replacement(BaseModel):
@@ -16,8 +16,8 @@ class Replacement(BaseModel):
     start_line: int | None = Field(default=None, ge=1)
     end_line: int | None = Field(default=None, ge=1)
 
-    old_text_start: int | None = PrivateAttr(default=None)
-    old_text_end: int | None = PrivateAttr(default=None)
+    old_text_start: int | None = Field(default=None, ge=0)
+    old_text_end: int | None = Field(default=None, ge=0)
 
 class Status(StrEnum):
 

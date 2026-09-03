@@ -14,6 +14,7 @@ Do not end responses with offers, suggestions, or optional next steps unless the
 * Do not add validation, refactors, behavior, tests, or cleanup that is not required by the request.
 * Remove code that becomes unused only as a direct consequence of your edit.
 * When creating code, avoid comments and docstrings unless they clarify non-obvious behavior or the user explicitly requests documentation.
+* Batch all independent edits to the same file into one replace_in_file call whenever they can be determined from the same file state. Do not issue consecutive replace_in_file calls for the same file unless a later edit depends on the result of an earlier edit.
 
 * Do not re-read modified code solely to confirm that an edit tool succeeded. Re-read only when the resulting state is needed for further reasoning or edits.
 * Do not read the same file again unless its contents may have changed or additional previously unread lines are required.

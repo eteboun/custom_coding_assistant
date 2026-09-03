@@ -442,7 +442,7 @@ class Tools:
         },
         additional_properties=False,
     )
-    def search_code(self, query: str) -> str:
+    def search_code(self, query: str) -> OutputProtocol:
         try:
             process = subprocess.run(
                 ["rg", "-n", query, self.repo_path.as_posix()],
@@ -452,16 +452,28 @@ class Tools:
                 errors="replace"
             )
         except FileNotFoundError:
-            return "ripgrep is not installed or not available in PATH"
+            return OutputProtocol(
+                status=Status.ERROR,
+                message="ripgrep is not installed or not available in PATH"
+            )
 
         if process.returncode == 0:
-            return process.stdout
+            return OutputProtocol(
+                status=Status.SUCCESS,
+                content=process.stdout
+            )
 
         elif process.returncode == 1:
-            return "No match found"
+            return OutputProtocol(
+                status=Status.ERROR,
+                message="No match found"
+            )
 
         else:
-            return f"An error occurred: {process.stderr}"
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"An error occurred: {process.stderr}"
+            )
 
     @_tool(
         tool_description=(
@@ -875,13 +887,15 @@ class Tools:
 @dataclass(frozen=True)
 class ToolOutput:
     call_id: str
-    output: str
+    output: OutputProtocol
 
     def serialize(self) -> dict:
         return {
             "type": "function_call_output",
             "call_id": self.call_id,
-            "output": self.output
+            "output": json.dumps(
+                self.output.serialize()
+            ),
         }
 
 @dataclass(frozen=True)
@@ -901,5 +915,5 @@ class ToolCall:
 
         return ToolOutput(
             call_id=self.call_id,
-            output=json.dumps(output),
+            output=output,
         )
