@@ -6,9 +6,11 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
+from pydantic import ValidationError
 
 from .schemas import Symbol, SymbolKind, ToolSchema
-from .utils import symbol_matches, parse_python_file, Pather
+from .utils import (symbol_matches, parse_python_file,
+                    Pather, OutputProtocol, Status, Replacement)
 
 class Tools:
 
@@ -28,7 +30,7 @@ class Tools:
         self.mapping = self._tool_mapping()
         self.datas = self._tool_datas()
 
-    def _run_docker(self, command: list[str]) -> dict:
+    def _run_docker(self, command: list[str]) -> OutputProtocol:
         docker_command = [
             "docker",
             "run",
@@ -64,26 +66,27 @@ class Tools:
                 timeout=30,
             )
         except subprocess.TimeoutExpired:
-            return {
-                "status": "error",
-                "message": "Execution timed out",
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message="Execution timed out",
+            )
         except FileNotFoundError:
-            return {
-                "status": "error",
-                "message": "Docker is not installed or not in PATH",
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message="Docker is not installed or not in PATH",
+            )
 
-        return {
-            "status": "success" if completed.returncode == 0 else "error",
-            "content": {
+        return OutputProtocol(
+            status=Status.SUCCESS if completed.returncode == 0 else Status.ERROR,
+            content={
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
                 "returncode": completed.returncode,
             },
-        }
+            message="Execution failed" if completed.returncode != 0 else None,
+        )
 
-    def _run_dockerized_file(self, path: Path) -> dict:
+    def _run_dockerized_file(self, path: Path) -> OutputProtocol:
         relative_path = path.relative_to(self.repo_path)
 
         return self._run_docker([
@@ -91,7 +94,7 @@ class Tools:
             relative_path.as_posix(),
         ])
 
-    def _run_dockerized_code(self, code: str) -> dict:
+    def _run_dockerized_code(self, code: str) -> OutputProtocol:
         return self._run_docker([
             "python",
             "-c",
@@ -247,13 +250,13 @@ class Tools:
         path: str,
         start_line: int | None = None,
         end_line: int | None = None,
-    ) -> dict:
+    ) -> OutputProtocol:
         resolved_file = self.pather.resolve_file(path=path)
 
-        if resolved_file["status"] == "error":
+        if resolved_file.is_fail():
             return resolved_file
 
-        full_path = resolved_file["content"]
+        full_path = resolved_file.content
 
         with open(full_path, encoding="utf-8") as f:
             lines = f.readlines()
@@ -272,10 +275,10 @@ class Tools:
                 f"{num} | {line}"
             )
 
-        return {
-            "status": "success",
-            "content": "".join(numbered_lines)
-        }
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content="".join(numbered_lines)
+        )
 
     @_tool(
         tool_description=(
@@ -288,21 +291,21 @@ class Tools:
         },
         additional_properties=False,
     )
-    def list_files(self, path: str) -> dict:
+    def list_files(self, path: str) -> OutputProtocol:
         resolved_dir = self.pather.resolve_dir(path=path)
 
-        if resolved_dir["status"] == "error":
+        if resolved_dir.is_fail():
             return resolved_dir
 
-        full_path = resolved_dir["content"]
+        full_path = resolved_dir.content
 
-        return {
-            "status": "success",
-            "content": [
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=[
                 e.name
                 for e in full_path.iterdir()
             ]
-        }
+        )
 
     @_tool(
         tool_description=(
@@ -316,7 +319,7 @@ class Tools:
         },
         additional_properties=False,
     )
-    def search_symbol(self, notation: str) -> dict:
+    def search_symbol(self, notation: str) -> OutputProtocol:
 
         full_paths = self.pather.search_files_containing_terms(
             notation.split("."),
@@ -347,15 +350,17 @@ class Tools:
                 )
             )
 
-        result = {
-            "status": "success",
-            "content": symbols,
+        content = {
+            "symbols": symbols
         }
 
         if errors:
-            result["errors"] = errors
+            content["errors"] = errors
 
-        return result
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=content
+        )
 
     @_tool(
         tool_description=(
@@ -369,24 +374,24 @@ class Tools:
         },
         additional_properties=False,
     )
-    def read_symbol(self, path: str, notation: str) -> dict:
+    def read_symbol(self, path: str, notation: str) -> OutputProtocol:
 
         resolved_file = self.pather.resolve_file(path=path)
 
-        if resolved_file["status"] == "error":
+        if resolved_file.is_fail():
             return resolved_file
 
-        full_path = resolved_file["content"]
+        full_path = resolved_file.content
 
         try:
             tree = parse_python_file(path=full_path)
         except SyntaxError:
-            return {
-                "status": "error",
-                "message": f"Failed to parse Python file: {
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"Failed to parse Python file: {
                     full_path.relative_to(self.repo_path).as_posix()
                 }"
-            }
+            )
 
         symbols = self._walk_symbols(
             search_notation=notation,
@@ -396,16 +401,16 @@ class Tools:
         )
 
         if not symbols:
-            return {
-                "status": "error",
-                "message": f"Symbol not found: {notation}"
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"Symbol not found: {notation}"
+            )
 
         if len(symbols) > 1:
-            return {
-                "status": "error",
-                "message": f"Multiple symbols found: {notation}"
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"Multiple symbols found: {notation}"
+            )
 
         symbol_data = symbols[0]
 
@@ -415,16 +420,16 @@ class Tools:
             end_line=symbol_data.end_line
         )
 
-        if read_result["status"] != "success":
+        if read_result.is_fail():
             return read_result
 
-        return {
-            "status": "success",
-            "content": {
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content={
                 "notation": symbol_data.notation,
-                "content": read_result["content"]
+                "content": read_result.content
             }
-        }
+        )
 
     @_tool(
         tool_description=(
@@ -460,84 +465,273 @@ class Tools:
 
     @_tool(
         tool_description=(
-                "Replace an exact piece of existing file content. "
-                "The text must occur exactly once within the selected line range. "
-                "A successful result confirms that the replacement was applied; "
-                "do not re-read solely to verify the replacement."
+                "Replace one or more exact pieces of content in a single existing file. "
+                "Each replacement is searched only within its specified original line range "
+                "and its old_text must occur exactly once within that range. "
+                "Replacement matches must not overlap. "
+                "All line ranges refer to the file state before any replacement is applied. "
+                "Use multiple replacement entries when making independent edits to the same file. "
+                "A successful result confirms that all replacements were applied; "
+                "do not re-read the file solely to verify them."
         ),
         property_descriptions={
-            "path": "Repository-relative file path.",
-            "old_text": (
-                "Exact text copied from the file, preserving its content, "
-                "whitespace, indentation, and line breaks."
+            "path": (
+                    "Repository-relative path of the existing file to modify."
             ),
-            "new_text": (
-                "Replacement text with the intended whitespace, indentation, "
-                "and line breaks."
+            "replacements": (
+                    "List of replacements to apply to the file. "
+                    "Each item contains start_line, end_line, old_text, and new_text. "
+                    "start_line and end_line are optional 1-based line bounds referring to "
+                    "the original file content. old_text must match exactly once within that "
+                    "range, and new_text is the content that replaces it."
             ),
-            "start_line": "Optional 1-based starting line.",
-            "end_line": "Optional 1-based ending line, inclusive.",
         },
         additional_properties=False,
     )
     def replace_in_file(
         self,
         path: str,
-        old_text: str,
-        new_text: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict:
+        replacements: list[dict]
+    ) -> OutputProtocol:
+
+        if not replacements:
+            return OutputProtocol(
+                status=Status.ERROR,
+                message="At least one replacement is required",
+            )
 
         resolved_file = self.pather.resolve_file(path=path)
 
-        if resolved_file["status"] == "error":
+        if resolved_file.is_fail():
             return resolved_file
 
-        full_path = resolved_file["content"]
-
+        full_path = resolved_file.content
         with open(full_path, "r", encoding="utf-8") as file:
             lines = file.readlines()
 
-        start = start_line - 1 if start_line is not None else 0
-        end = end_line if end_line is not None else len(lines)
+        line_offsets = [0]
 
-        target_piece = "".join(lines[start:end])
+        for line in lines:
+            line_offsets.append(line_offsets[-1] + len(line))
 
-        count = target_piece.count(old_text)
+        def _validate_replacements() -> OutputProtocol:
 
-        if count == 0:
-            return {
-                "status": "error",
-                "message": f"No match found for {old_text} in {path}",
-            }
+            def _set_old_text_ranges(
+                    replacement_objs_: list[Replacement]
+            ) -> list[Replacement]:
 
-        if count > 1:
-            return {
-                "status": "error",
-                "message": f"Multiple matches found for {old_text} in {path}",
-            }
+                for replacement_ in replacement_objs_:
+                    start_ = (
+                        replacement_.start_line - 1
+                        if replacement_.start_line is not None
+                        else 0
+                    )
+                    end_ = (
+                        replacement_.end_line
+                        if replacement_.end_line is not None
+                        else len(lines)
+                    )
 
-        target_piece = target_piece.replace(old_text, new_text)
+                    target_piece_ = "".join(lines[start_:end_])
 
-        new_content = (
-            "".join(lines[:start])
-            + target_piece
-            + "".join(lines[end:])
-        )
+                    replacement_.old_text_start = (
+                            line_offsets[start_]
+                            + target_piece_.find(replacement_.old_text)
+                    )
+                    replacement_.old_text_end = (replacement_.old_text_start
+                                                 + len(replacement_.old_text))
+
+                return replacement_objs_
+
+            def _validate_params(
+                    replacements_: list[dict]
+            ) -> OutputProtocol:
+
+                errors_ = []
+                replacement_objs_ = []
+
+                for idx, replacement_ in enumerate(replacements_):
+
+                    try:
+                        replacement_obj_ = Replacement(**replacement_)
+
+                    except ValidationError as e:
+                        errors_.append({
+                            "index": idx,
+                            "message": e.errors()
+                        })
+                        continue
+
+                    temp_start = (
+                        replacement_obj_.start_line
+                        if replacement_obj_.start_line is not None
+                        else 0
+                    )
+
+                    temp_end = (
+                        replacement_obj_.end_line
+                        if replacement_obj_.end_line is not None
+                        else len(lines)
+                    )
+
+                    if temp_start > temp_end:
+                        errors_.append({
+                            "index": idx,
+                            "message": "Start line can not be greater than end line"
+                        })
+
+                    else:
+                        replacement_objs_.append(
+                            replacement_obj_
+                        )
+
+                if len(errors_) > 0:
+                    return OutputProtocol(
+                        status=Status.ERROR,
+                        content=errors_,
+                        message="Replacements fail to satisfy parameter requirements"
+                    )
+
+                return OutputProtocol(
+                    status=Status.SUCCESS,
+                    content=replacement_objs_
+                )
+
+            def _validate_counts(
+                    replacement_objs_: list[Replacement]
+            ) -> OutputProtocol:
+
+                errors_: list[dict] = []
+
+                for idx, replacement_ in enumerate(replacement_objs_):
+
+                    start_ = (
+                        replacement_.start_line - 1
+                        if replacement_.start_line is not None
+                        else 0
+                    )
+                    end_ = (
+                        replacement_.end_line
+                        if replacement_.end_line is not None
+                        else len(lines)
+                    )
+
+                    target_piece_ = "".join(lines[start_:end_])
+
+                    count = target_piece_.count(replacement_.old_text)
+
+                    if count == 0:
+                        errors_.append({
+                            "index": idx,
+                            "message": f"No match found for {replacement_.old_text} in {path}"
+                        })
+
+                    elif count > 1:
+                        errors_.append({
+                            "index": idx,
+                            "message": f"Multiple matches found for {replacement_.old_text} in {path}"
+                        })
+
+                if len(errors_) > 0:
+                    return OutputProtocol(
+                        status=Status.ERROR,
+                        content=errors_,
+                        message="Replacements fail to satisfy count requirements"
+                    )
+
+                return OutputProtocol(
+                    status=Status.SUCCESS,
+                    content=replacement_objs_
+                )
+
+            def _validate_ranges(
+                    replacement_objs_: list[Replacement]
+            ) -> OutputProtocol:
+
+                errors_: list[dict] = []
+
+                replacement_ranges: dict[int, tuple[int, int]] = {}
+
+                for idx, replacement_ in enumerate(replacement_objs_):
+
+                    for idx_, (other_start, other_end) in replacement_ranges.items():
+                        if (
+                                replacement_.old_text_start < other_end
+                                and other_start < replacement_.old_text_end
+                        ):
+                            errors_.append({
+                                "message": f"Replacements {idx} and {idx_} conflict."
+                            })
+
+                    replacement_ranges[idx] = (
+                        replacement_.old_text_start,
+                        replacement_.old_text_end,
+                    )
+
+                if len(errors_) > 0:
+                    return OutputProtocol(
+                        status=Status.ERROR,
+                        content=errors_,
+                        message="Replacements fail to satisfy range requirements"
+                    )
+
+                return OutputProtocol(
+                    status=Status.SUCCESS,
+                    content=replacement_objs_
+                )
+
+            validated_replacements_ = _validate_params(
+                replacements_=replacements
+            )
+
+            if validated_replacements_.is_fail():
+                return validated_replacements_
+
+            validated_replacements_ = _validate_counts(
+                replacement_objs_=validated_replacements_.content
+            )
+
+            if validated_replacements_.is_fail():
+                return validated_replacements_
+
+            replacement_objs = _set_old_text_ranges(
+                replacement_objs_=validated_replacements_.content
+            )
+
+            return _validate_ranges(
+                replacement_objs_=replacement_objs
+            )
+
+        validated_replacements = _validate_replacements()
+
+        if validated_replacements.is_fail():
+            return validated_replacements
+
+        replacement_order = list(sorted(
+            validated_replacements.content,
+            key=lambda r: r.old_text_start,
+            reverse=True
+        ))
+
+        text = "".join(lines)
+
+        for replacement in replacement_order:
+            assert replacement.old_text_start is not None
+            assert replacement.old_text_end is not None
+
+            text = (
+                    text[:replacement.old_text_start]
+                    + replacement.new_text
+                    + text[replacement.old_text_end:]
+            )
 
         with open(full_path, "w", encoding="utf-8") as file:
-            file.write(new_content)
+            file.write(text)
 
-        return {
-            "status": "success",
-            "content": {
-                "path": path,
-                "updated_text": new_text,
-                "start_line": start_line,
-                "end_line": end_line
-            }
-        }
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=path,
+        )
 
     @_tool(
         tool_description=(
@@ -553,29 +747,29 @@ class Tools:
         self,
         path: str,
         content: str,
-    ) -> dict:
+    ) -> OutputProtocol:
         resolved_path = self.pather.resolve_path(path=path)
 
-        if resolved_path["status"] == "error":
+        if resolved_path.is_fail():
             return resolved_path
 
-        full_path = resolved_path["content"]
+        full_path = resolved_path.content
 
         if full_path.exists():
-            return {
-                "status": "error",
-                "message": f"File {full_path} already exists",
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"File {full_path} already exists",
+            )
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content, encoding="utf-8")
 
-        return {
-            "status": "success",
-            "content": {
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content={
                 "path": path,
             }
-        }
+        )
 
     @_tool(
         tool_description="Deletes the file with provided path.",
@@ -584,22 +778,20 @@ class Tools:
         },
         additional_properties=False
     )
-    def delete_file(self, path: str) -> dict:
+    def delete_file(self, path: str) -> OutputProtocol:
         resolved_path = self.pather.resolve_path(path=path)
 
-        if resolved_path["status"] == "error":
+        if resolved_path.is_fail():
             return resolved_path
 
-        full_path = resolved_path["content"]
+        full_path = resolved_path.content
 
         full_path.unlink()
 
-        return {
-            "status": "success",
-            "content": {
-                "path": path,
-            }
-        }
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=path
+        )
 
     @_tool(
         tool_description=(
@@ -614,7 +806,7 @@ class Tools:
         },
         additional_properties=False
     )
-    def run_command(self, command: list[str]) -> dict:
+    def run_command(self, command: list[str]) -> OutputProtocol:
         return self._run_docker(
             command=command
         )
@@ -627,8 +819,8 @@ class Tools:
         property_descriptions={},
         additional_properties=False,
     )
-    def repo_tree(self) -> dict:
-        files = []
+    def repo_tree(self) -> OutputProtocol:
+        files: list[str] = []
 
         for path in self.repo_path.rglob("*"):
             relative_path = path.relative_to(self.repo_path)
@@ -636,10 +828,10 @@ class Tools:
             if self.pather.is_allowed_filepath(path=path):
                 files.append(relative_path.as_posix())
 
-        return {
-            "status": "success",
-            "content": files,
-        }
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=files,
+        )
 
     @_tool(
         tool_description="Run a Python script.",
@@ -648,20 +840,20 @@ class Tools:
         },
         additional_properties=False,
     )
-    def run_python_file(self, path: str) -> dict:
+    def run_python_file(self, path: str) -> OutputProtocol:
 
         resolved_file = self.pather.resolve_file(path=path)
 
-        if resolved_file["status"] == "error":
+        if resolved_file.is_fail():
             return resolved_file
 
-        full_path = resolved_file["content"]
+        full_path = resolved_file.content
 
         if full_path.suffix != ".py":
-            return {
-                "status": "error",
-                "message": f"File {full_path} is not a Python file"
-            }
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=f"File {full_path} is not a Python file"
+            )
 
         return self._run_dockerized_file(
             path=full_path
@@ -677,7 +869,7 @@ class Tools:
         },
         additional_properties=False,
     )
-    def run_python_code(self, code: str) -> dict:
+    def run_python_code(self, code: str) -> OutputProtocol:
         return self._run_dockerized_code(code)
 
 @dataclass(frozen=True)

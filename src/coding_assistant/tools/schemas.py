@@ -4,9 +4,9 @@ from enum import StrEnum
 from dataclasses import dataclass
 from collections.abc import Callable
 from pathlib import Path
-from typing import Self
+from typing import Self, override
 
-from .utils import to_json_schema_type
+from .utils import to_json_schema_type, Serializable
 
 class SymbolKind(StrEnum):
     METHOD = "method"
@@ -14,13 +14,14 @@ class SymbolKind(StrEnum):
     CLASS = "class"
 
 @dataclass(frozen=True)
-class Symbol:
+class Symbol(Serializable):
     path: Path
     notation: str
     kind: SymbolKind
     start_line: int
     end_line: int
 
+    @override
     def serialize(self) -> dict:
         return {
             "path": self.path.as_posix(),
@@ -37,13 +38,13 @@ class Property:
     type: list[str]
     description: str
 
-
 @dataclass(frozen=True)
-class Parameters:
+class Parameters(Serializable):
     properties: list[Property]
     required_properties: list[Property]
     additional_properties: bool
 
+    @override
     def serialize(self) -> dict:
         return {
             "type": "object",
@@ -102,11 +103,12 @@ class Parameters:
         )
 
 @dataclass(frozen=True)
-class ToolSchema:
+class ToolSchema(Serializable):
     name: str
     description: str
     parameters: Parameters
 
+    @override
     def serialize(self) -> dict:
         return {
             "type": "function",
