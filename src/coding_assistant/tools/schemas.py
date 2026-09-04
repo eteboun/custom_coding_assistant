@@ -1,12 +1,10 @@
-import inspect
-
 from enum import StrEnum
 from dataclasses import dataclass
 from collections.abc import Callable
 from pathlib import Path
 from typing import Self, override
 
-from .utils import to_json_schema_type, Serializable
+from .utils import Serializable
 
 class SymbolKind(StrEnum):
     METHOD = "method"
@@ -31,82 +29,27 @@ class Symbol(Serializable):
             "notation": self.notation
         }
 
-
-@dataclass(frozen=True)
-class Property:
-    name: str
-    type: list[str]
-    description: str
-
 @dataclass(frozen=True)
 class Parameters(Serializable):
-    properties: list[Property]
-    required_properties: list[Property]
+    properties: dict[str, dict]
+    required: list[str]
     additional_properties: bool
 
     @override
     def serialize(self) -> dict:
         return {
             "type": "object",
-            "properties": {
-                prop.name: {
-                    "type": prop.type,
-                    "description": prop.description
-                } for prop in self.properties
-            },
-            "required": [
-                prop.name
-                for prop in self.required_properties
-            ],
+            "properties": self.properties,
+            "required": self.required,
             "additionalProperties": self.additional_properties
         }
-
-    @classmethod
-    def from_func(cls,
-                  func: Callable,
-                  property_descriptions: dict[str, str],
-                  additional_properties: bool
-                  ) -> Self:
-
-        properties: list[Property] = []
-        required_properties: list[Property] = []
-
-        sig = inspect.signature(func)
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-
-            types = to_json_schema_type(param.annotation)
-
-            description = property_descriptions.get(name)
-            if description is None:
-                raise ValueError(
-                    "description cannot be empty"
-                )
-
-            property_ = Property(
-                name=name,
-                type=types,
-                description=description,
-            )
-
-            properties.append(property_)
-
-            has_default = param.default is not inspect._empty
-            if not has_default:
-                required_properties.append(property_)
-
-        return cls(
-            properties=properties,
-            required_properties=required_properties,
-            additional_properties=additional_properties
-        )
 
 @dataclass(frozen=True)
 class ToolSchema(Serializable):
     name: str
     description: str
     parameters: Parameters
+    strict: bool
 
     @override
     def serialize(self) -> dict:
@@ -115,25 +58,21 @@ class ToolSchema(Serializable):
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters.serialize(),
+            "strict": self.strict
         }
 
     @classmethod
     def from_func(cls,
                   func: Callable,
-                  tool_description: str,
-                  property_descriptions: dict[str, str],
-                  additional_properties: bool
+                  description: str,
+                  parameters: Parameters,
+                  strict: bool
                   ) -> Self:
         name = func.__name__
 
-        parameters = Parameters.from_func(
-            func=func,
-            property_descriptions=property_descriptions,
-            additional_properties=additional_properties
-        )
-
         return cls(
             name=name,
-            description=tool_description,
-            parameters=parameters
+            description=description,
+            parameters=parameters,
+            strict=strict
         )

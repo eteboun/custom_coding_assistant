@@ -1,7 +1,6 @@
-import inspect
 import ast
 from pathlib import Path
-from typing import Any, get_args, override
+from typing import Any, override
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,11 +12,8 @@ class Replacement(BaseModel):
 
     old_text: str
     new_text: str
-    start_line: int | None = Field(default=None, ge=1)
-    end_line: int | None = Field(default=None, ge=1)
-
-    old_text_start: int | None = Field(default=None, ge=0)
-    old_text_end: int | None = Field(default=None, ge=0)
+    start_line: int = Field(ge=1)
+    end_line: int = Field(ge=1)
 
 class Status(StrEnum):
 
@@ -223,31 +219,11 @@ def symbol_matches(
         )
     )
 
-_PYTHON_TO_JSON_SCHEMA_TYPE = {
-    str: "string",
-    int: "integer",
-    float: "number",
-    bool: "boolean",
-    list: "array",
-    dict: "object",
-    type(None): "null",
-}
+def _strip_final_newline(text: str) -> str:
+    if text.endswith("\r\n"):
+        return text[:-2]
 
-def to_json_schema_type(annotation: Any) -> list[str]:
-    if annotation is inspect._empty:
-        raise TypeError("Parameter annotation is required")
+    if text.endswith("\n"):
+        return text[:-1]
 
-    args = get_args(annotation)
-
-    if not args:
-        args = (annotation,)
-
-    try:
-        return [
-            _PYTHON_TO_JSON_SCHEMA_TYPE[arg]
-            for arg in args
-        ]
-    except KeyError as exc:
-        raise TypeError(
-            f"Unsupported parameter type: {annotation}"
-        ) from exc
+    return text

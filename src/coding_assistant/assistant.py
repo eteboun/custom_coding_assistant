@@ -42,10 +42,6 @@ class Assistant:
 
         return wrapper
 
-    @staticmethod
-    def _args_to_dict(args: str) -> dict:
-        return json.loads(args)
-
     def _llm_initial_call(self, query: str) -> Response:
         return self.client.responses.create(
             model=self.config.model_name,
@@ -73,7 +69,7 @@ class Assistant:
                 tool_calls.append(
                     ToolCall(
                         name=item.name,
-                        args=self._args_to_dict(item.arguments),
+                        args=json.loads(item.arguments),
                         call_id=item.call_id
                     )
                 )
