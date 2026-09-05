@@ -484,8 +484,21 @@ class Tools:
     )
     def search_code(self, query: str) -> OutputProtocol:
         try:
+            command = [
+                "rg",
+                "-n",
+                query,
+                self.repo_path.as_posix(),
+            ]
+
+            for file in self.pather.blocked_files:
+                command.extend(["-g", f"!{file}"])
+
+            for directory in self.pather.blocked_dirs:
+                command.extend(["-g", f"!{directory}/**"])
+
             process = subprocess.run(
-                ["rg", "-n", query, self.repo_path.as_posix()],
+                command,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -798,18 +811,52 @@ class Tools:
         ),
     )
     def delete_file(self, path: str) -> OutputProtocol:
-        resolved_path = self.pather.resolve_path(path=path)
+        resolve_filed = self.pather.resolve_file(path=path)
 
-        if resolved_path.is_fail():
-            return resolved_path
+        if resolve_filed.is_fail():
+            return resolve_filed
 
-        full_path = resolved_path.content
+        full_path = resolve_filed.content
 
         full_path.unlink()
 
         return OutputProtocol(
             status=Status.SUCCESS,
             content=path
+        )
+
+    @_tool(
+        description="Deletes the directory with provided path.",
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative path for the directory to be deleted.",
+                },
+            },
+            required=["path"],
+            additional_properties=False,
+        ),
+    )
+    def delete_dir(self, path: str) -> OutputProtocol:
+        resolved_dir = self.pather.resolve_dir(path=path)
+
+        if resolved_dir.is_fail():
+            return resolved_dir
+
+        full_path = resolved_dir.content
+
+        try:
+            full_path.rmdir()
+        except OSError as e:
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=str(e),
+            )
+
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=path,
         )
 
     @_tool(
@@ -862,54 +909,6 @@ class Tools:
             status=Status.SUCCESS,
             content=files,
         )
-
-    @_tool(
-        description="Run a Python script.",
-        parameters=Parameters(
-            properties={
-                "path": {
-                    "type": "string",
-                    "description": "Repository-relative file path.",
-                },
-            },
-            required=["path"],
-            additional_properties=False,
-        ),
-    )
-    def run_python_file(self, path: str) -> OutputProtocol:
-
-        resolved_file = self.pather.resolve_file(path=path)
-
-        if resolved_file.is_fail():
-            return resolved_file
-
-        full_path = resolved_file.content
-
-        if full_path.suffix != ".py":
-            return OutputProtocol(
-                status=Status.ERROR,
-                message=f"File {full_path} is not a Python file"
-            )
-
-        return self._run_dockerized_file(
-            path=full_path
-        )
-
-    @_tool(
-        description="Execute Python code from the repository root.",
-        parameters=Parameters(
-            properties={
-                "code": {
-                    "type": "string",
-                    "description": "Python code to execute.",
-                },
-            },
-            required=["code"],
-            additional_properties=False,
-        ),
-    )
-    def run_python_code(self, code: str) -> OutputProtocol:
-        return self._run_dockerized_code(code)
 
 @dataclass(frozen=True)
 class ToolOutput:
