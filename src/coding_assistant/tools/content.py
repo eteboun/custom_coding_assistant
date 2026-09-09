@@ -6,10 +6,9 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
-from pydantic import ValidationError
 
-from .schemas import Symbol, SymbolKind, ToolSchema
-from .utils import (symbol_matches, parse_python_file,
+from coding_assistant.tools.schemas import Symbol, SymbolKind, ToolSchema, Parameters
+from coding_assistant.tools.utils import (symbol_matches, parse_python_file, _strip_final_newline,
                     Pather, OutputProtocol, Status, Replacement)
 
 class Tools:
@@ -212,18 +211,18 @@ class Tools:
 
     @staticmethod
     def _tool(
-            tool_description: str,
-            property_descriptions: dict,
-            additional_properties: bool
+            description: str,
+            parameters: Parameters,
+            strict: bool = False
     ) -> Callable:
 
         def decorator(func):
 
             tool_data = ToolSchema.from_func(
                 func=func,
-                tool_description=tool_description,
-                property_descriptions=property_descriptions,
-                additional_properties=additional_properties
+                description=description,
+                parameters=parameters,
+                strict=strict
             )
 
             func.is_tool = True
@@ -234,15 +233,29 @@ class Tools:
         return decorator
 
     @_tool(
-        tool_description=(
+        description=(
                 "Read a known text file, optionally within a line range. "
         ),
-        property_descriptions={
-            "path": "Repository-relative file path.",
-            "start_line": "Optional 1-based starting line.",
-            "end_line": "Optional 1-based ending line, inclusive.",
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative file path.",
+                },
+                "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional 1-based starting line.",
+                },
+                "end_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional 1-based ending line, inclusive.",
+                }
+            },
+            required=["path", "start_line", "end_line"],
+            additional_properties=False
+        )
     )
     def read_file(
         self,
@@ -280,13 +293,19 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
+        description=(
                 "List files and directories inside a known repository directory."
         ),
-        property_descriptions={
-            "path": "Repository-relative directory path. Use '.' for the root."
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative directory path. Use '.' for the root.",
+                }
+            },
+            required=["path"],
+            additional_properties=False,
+        ),
     )
     def list_files(self, path: str) -> OutputProtocol:
         resolved_dir = self.pather.resolve_dir(path=path)
@@ -305,18 +324,24 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
-            "Search repository python files "
-            "for specific class or function names when the location is unknown. "
+        description=(
+                "Search repository python files "
+                "for specific class or function names when the location is unknown."
         ),
-        property_descriptions={
-            "notation": (
-                "Class or function name with proper hierarchy. "
-                "E.g. 'run' for general search for the function 'run', "
-                "'Assistant.run' for the method 'run' in the 'Assistant' class."
-            ),
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "notation": {
+                    "type": "string",
+                    "description": (
+                            "Class or function name with proper hierarchy. "
+                            "E.g. 'run' for general search for the function 'run', "
+                            "'Assistant.run' for the method 'run' in the 'Assistant' class."
+                    ),
+                }
+            },
+            required=["notation"],
+            additional_properties=False,
+        ),
     )
     def search_symbol(self, notation: str) -> OutputProtocol:
 
@@ -362,19 +387,28 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
+        description=(
                 "Read a specific class or function data "
                 "when both its file path and exact qualified name are known."
         ),
-        property_descriptions={
-            "path": "Repository-relative Python file path.",
-            "notation": (
-                "Class or function name with proper hierarchy. "
-                "E.g. 'run' for general search for the function 'run', "
-                "'Assistant.run' for the method 'run' in the 'Assistant' class."
-            ),
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative Python file path.",
+                },
+                "notation": {
+                    "type": "string",
+                    "description": (
+                            "Class or function name with proper hierarchy. "
+                            "E.g. 'run' for general search for the function 'run', "
+                            "'Assistant.run' for the method 'run' in the 'Assistant' class."
+                    ),
+                },
+            },
+            required=["path", "notation"],
+            additional_properties=False,
+        ),
     )
     def read_symbol(self, path: str, notation: str) -> OutputProtocol:
 
@@ -434,18 +468,37 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
-            "Search repository contents for text or regex matches. "
+        description=(
+                "Search repository contents for text or regex matches."
         ),
-        property_descriptions={
-            "query": "Text or regular expression to search for."
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "query": {
+                    "type": "string",
+                    "description": "Text or regular expression to search for.",
+                }
+            },
+            required=["query"],
+            additional_properties=False,
+        ),
     )
     def search_code(self, query: str) -> OutputProtocol:
         try:
+            command = [
+                "rg",
+                "-n",
+                query,
+                self.repo_path.as_posix(),
+            ]
+
+            for file in self.pather.blocked_files:
+                command.extend(["-g", f"!{file}"])
+
+            for directory in self.pather.blocked_dirs:
+                command.extend(["-g", f"!{directory}/**"])
+
             process = subprocess.run(
-                ["rg", "-n", query, self.repo_path.as_posix()],
+                command,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -476,27 +529,68 @@ class Tools:
             )
 
     @_tool(
-        tool_description=(
-                "Replace one or more exact pieces of content in a single existing file. "
-                "Each replacement is searched only within its specified original line range "
-                "and its old_text must occur exactly once within that range. "
-                "Replacement matches must not overlap. "
-                "All line ranges refer to the file state before any replacement is applied. "
-                "Use multiple replacement entries when making independent edits to the same file. "
+        description=(
+                "Replace one or more exact line ranges in a single existing file. "
+                "All ranges are inclusive, 1-based, and refer to the original file state. "
+                "old_text must exactly match the selected range, and ranges must not overlap. "
+                "Use the smallest line range that contains the required change. "
+                "Do not include unchanged surrounding lines. "
+                "Batch independent edits to the same file into one call."
         ),
-        property_descriptions={
-            "path": (
-                    "Repository-relative path of the existing file to modify."
-            ),
-            "replacements": (
-                    "List of replacements to apply to the file. "
-                    "Each item contains start_line, end_line, old_text, and new_text. "
-                    "start_line and end_line are optional 1-based line bounds referring to "
-                    "the original file content. old_text must match exactly once within that "
-                    "range, and new_text is the content that replaces it."
-            ),
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": (
+                            "Repository-relative path of the existing file to modify."
+                    ),
+                },
+                "replacements": {
+                    "type": "array",
+                    "description": (
+                            "List of replacements to apply. "
+                            "Each replacement selects an inclusive 1-based line range."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start_line": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "First line of the range.",
+                            },
+                            "end_line": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Last line of the range, inclusive.",
+                            },
+                            "old_text": {
+                                "type": "string",
+                                "description": (
+                                        "Exact content of the selected line range."
+                                ),
+                            },
+                            "new_text": {
+                                "type": "string",
+                                "description": (
+                                        "Content that replaces the selected line range."
+                                ),
+                            },
+                        },
+                        "required": [
+                            "start_line",
+                            "end_line",
+                            "old_text",
+                            "new_text",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            required=["path", "replacements"],
+            additional_properties=False,
+        ),
+        strict=True
     )
     def replace_in_file(
         self,
@@ -524,165 +618,51 @@ class Tools:
         for line in lines:
             line_offsets.append(line_offsets[-1] + len(line))
 
-        def _validate_replacements() -> OutputProtocol:
+        def _validate_replacements(replacement_objs_: list[Replacement]) -> OutputProtocol:
 
-            def _set_old_text_ranges(
-                    replacement_objs_: list[Replacement]
-            ) -> list[Replacement]:
-
-                for replacement_ in replacement_objs_:
-                    start_ = (
-                        replacement_.start_line - 1
-                        if replacement_.start_line is not None
-                        else 0
-                    )
-                    end_ = (
-                        replacement_.end_line
-                        if replacement_.end_line is not None
-                        else len(lines)
-                    )
-
-                    target_piece_ = "".join(lines[start_:end_])
-
-                    replacement_.old_text_start = (
-                            line_offsets[start_]
-                            + target_piece_.find(replacement_.old_text)
-                    )
-                    replacement_.old_text_end = (replacement_.old_text_start
-                                                 + len(replacement_.old_text))
-
-                return replacement_objs_
-
-            def _validate_params(
-                    replacements_: list[dict]
-            ) -> OutputProtocol:
-
-                errors_ = []
-                replacement_objs_ = []
-
-                for idx, replacement_ in enumerate(replacements_):
-
-                    try:
-                        replacement_obj_ = Replacement(**replacement_)
-
-                    except ValidationError as e:
-                        errors_.append({
-                            "index": idx,
-                            "message": e.errors()
-                        })
-                        continue
-
-                    temp_start = (
-                        replacement_obj_.start_line
-                        if replacement_obj_.start_line is not None
-                        else 0
-                    )
-
-                    temp_end = (
-                        replacement_obj_.end_line
-                        if replacement_obj_.end_line is not None
-                        else len(lines)
-                    )
-
-                    if temp_start > temp_end:
-                        errors_.append({
-                            "index": idx,
-                            "message": "Start line can not be greater than end line"
-                        })
-
-                    else:
-                        replacement_objs_.append(
-                            replacement_obj_
-                        )
-
-                if len(errors_) > 0:
-                    return OutputProtocol(
-                        status=Status.ERROR,
-                        content=errors_,
-                        message="Replacements fail to satisfy parameter requirements"
-                    )
-
-                return OutputProtocol(
-                    status=Status.SUCCESS,
-                    content=replacement_objs_
-                )
-
-            def _validate_counts(
-                    replacement_objs_: list[Replacement]
-            ) -> OutputProtocol:
-
-                errors_: list[dict] = []
-
-                for idx, replacement_ in enumerate(replacement_objs_):
-
-                    start_ = (
-                        replacement_.start_line - 1
-                        if replacement_.start_line is not None
-                        else 0
-                    )
-                    end_ = (
-                        replacement_.end_line
-                        if replacement_.end_line is not None
-                        else len(lines)
-                    )
-
-                    target_piece_ = "".join(lines[start_:end_])
-
-                    count = target_piece_.count(replacement_.old_text)
-
-                    if count == 0:
-                        errors_.append({
-                            "index": idx,
-                            "message": f"No match found for {replacement_.old_text} in {path}"
-                        })
-
-                    elif count > 1:
-                        errors_.append({
-                            "index": idx,
-                            "message": f"Multiple matches found for {replacement_.old_text} in {path}"
-                        })
-
-                if len(errors_) > 0:
-                    return OutputProtocol(
-                        status=Status.ERROR,
-                        content=errors_,
-                        message="Replacements fail to satisfy count requirements"
-                    )
-
-                return OutputProtocol(
-                    status=Status.SUCCESS,
-                    content=replacement_objs_
-                )
-
-            def _validate_ranges(
-                    replacement_objs_: list[Replacement]
-            ) -> OutputProtocol:
+            def _validate_ranges() -> OutputProtocol:
 
                 errors_: list[dict] = []
 
                 replacement_ranges: dict[int, tuple[int, int]] = {}
 
                 for idx, replacement_ in enumerate(replacement_objs_):
+                    if (
+                            replacement_.start_line
+                            > replacement_.end_line
+                    ):
+                        errors_.append({
+                            "index": idx,
+                            "message": "Start line can not be greater than end line"
+                        })
+                        continue
+
+                    if replacement_.end_line > len(lines):
+                        errors_.append({
+                            "index": idx,
+                            "message": "Out of bounds line range"
+                        })
+                        continue
 
                     for idx_, (other_start, other_end) in replacement_ranges.items():
                         if (
-                                replacement_.old_text_start < other_end
-                                and other_start < replacement_.old_text_end
+                                replacement_.start_line <= other_end
+                                and other_start <= replacement_.end_line
                         ):
                             errors_.append({
-                                "message": f"Replacements {idx} and {idx_} conflict."
+                                "message": f"Replacements {idx} and {idx_} conflict"
                             })
 
                     replacement_ranges[idx] = (
-                        replacement_.old_text_start,
-                        replacement_.old_text_end,
+                        replacement_.start_line,
+                        replacement_.end_line,
                     )
 
                 if len(errors_) > 0:
                     return OutputProtocol(
                         status=Status.ERROR,
                         content=errors_,
-                        message="Replacements fail to satisfy range requirements"
+                        message="Replacements do not match the specified line ranges"
                     )
 
                 return OutputProtocol(
@@ -690,50 +670,77 @@ class Tools:
                     content=replacement_objs_
                 )
 
-            validated_replacements_ = _validate_params(
-                replacements_=replacements
-            )
+            def _validate_old_texts() -> OutputProtocol:
+
+                errors_: list[dict] = []
+
+                for idx, replacement_ in enumerate(replacement_objs_):
+
+                    start_ = replacement_.start_line - 1
+                    end_ = replacement_.end_line
+
+                    target_piece_ = "".join(lines[start_:end_])
+
+                    if (
+                            _strip_final_newline(target_piece_)
+                            != _strip_final_newline(replacement_.old_text)
+                    ):
+                        errors_.append({
+                            "index": idx,
+                            "message": "Provided lines do not match old text"
+                        })
+
+                if len(errors_) > 0:
+                    return OutputProtocol(
+                        status=Status.ERROR,
+                        content=errors_,
+                        message="Replacements do not match the specified line ranges"
+                    )
+
+                return OutputProtocol(
+                    status=Status.SUCCESS,
+                    content=replacement_objs_
+                )
+
+            validated_replacements_ = _validate_ranges()
 
             if validated_replacements_.is_fail():
                 return validated_replacements_
 
-            validated_replacements_ = _validate_counts(
-                replacement_objs_=validated_replacements_.content
-            )
+            return _validate_old_texts()
 
-            if validated_replacements_.is_fail():
-                return validated_replacements_
+        replacement_objs = [
+            Replacement.model_construct(**replacement)
+            for replacement in replacements
+        ]
 
-            replacement_objs = _set_old_text_ranges(
-                replacement_objs_=validated_replacements_.content
-            )
-
-            return _validate_ranges(
-                replacement_objs_=replacement_objs
-            )
-
-        validated_replacements = _validate_replacements()
+        validated_replacements = _validate_replacements(
+            replacement_objs_=replacement_objs
+        )
 
         if validated_replacements.is_fail():
             return validated_replacements
 
-        replacement_order = list(sorted(
+        replacement_order = sorted(
             validated_replacements.content,
-            key=lambda r: r.old_text_start,
+            key=lambda r: r.start_line,
             reverse=True
-        ))
+        )
 
         text = "".join(lines)
 
         for replacement in replacement_order:
-            assert replacement.old_text_start is not None
-            assert replacement.old_text_end is not None
+            start = line_offsets[replacement.start_line - 1]
+            end = line_offsets[replacement.end_line]
 
-            text = (
-                    text[:replacement.old_text_start]
-                    + replacement.new_text
-                    + text[replacement.old_text_end:]
-            )
+            old_piece = text[start:end]
+            has_trailing_newline = old_piece.endswith("\n")
+
+            new_text = replacement.new_text
+            if has_trailing_newline and new_text:
+                new_text += "\n"
+
+            text = text[:start] + new_text + text[end:]
 
         with open(full_path, "w", encoding="utf-8") as file:
             file.write(text)
@@ -744,14 +751,23 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
-            "Create a new file."
+        description=(
+                "Create a new file."
         ),
-        property_descriptions={
-            "path": "Repository-relative path for the new file.",
-            "content": "Complete initial content of the file.",
-        },
-        additional_properties=False,
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative path for the new file.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Complete initial content of the file.",
+                },
+            },
+            required=["path", "content"],
+            additional_properties=False,
+        ),
     )
     def create_file(
         self,
@@ -782,19 +798,25 @@ class Tools:
         )
 
     @_tool(
-        tool_description="Deletes the file with provided path.",
-        property_descriptions={
-            "path": "Repository-relative path for the file to be deleted.",
-        },
-        additional_properties=False
+        description="Deletes the file with provided path.",
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative path for the file to be deleted.",
+                },
+            },
+            required=["path"],
+            additional_properties=False,
+        ),
     )
     def delete_file(self, path: str) -> OutputProtocol:
-        resolved_path = self.pather.resolve_path(path=path)
+        resolve_filed = self.pather.resolve_file(path=path)
 
-        if resolved_path.is_fail():
-            return resolved_path
+        if resolve_filed.is_fail():
+            return resolve_filed
 
-        full_path = resolved_path.content
+        full_path = resolve_filed.content
 
         full_path.unlink()
 
@@ -804,17 +826,60 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
+        description="Deletes the directory with provided path.",
+        parameters=Parameters(
+            properties={
+                "path": {
+                    "type": "string",
+                    "description": "Repository-relative path for the directory to be deleted.",
+                },
+            },
+            required=["path"],
+            additional_properties=False,
+        ),
+    )
+    def delete_dir(self, path: str) -> OutputProtocol:
+        resolved_dir = self.pather.resolve_dir(path=path)
+
+        if resolved_dir.is_fail():
+            return resolved_dir
+
+        full_path = resolved_dir.content
+
+        try:
+            full_path.rmdir()
+        except OSError as e:
+            return OutputProtocol(
+                status=Status.ERROR,
+                message=str(e),
+            )
+
+        return OutputProtocol(
+            status=Status.SUCCESS,
+            content=path,
+        )
+
+    @_tool(
+        description=(
                 "Runs a command in an isolated Docker container "
                 "with the repository as the working directory."
         ),
-        property_descriptions={
-            "command": (
-                    "Command and arguments to execute, provided as a list. "
-                    "Example: ['python', '-m', 'pytest']."
-            )
-        },
-        additional_properties=False
+        parameters=Parameters(
+            properties={
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                    },
+                    "description": (
+                            "Command and arguments to execute, provided as a list. "
+                            "Example: ['python', '-m', 'pytest']."
+                    ),
+                },
+            },
+            required=["command"],
+            additional_properties=False,
+        ),
     )
     def run_command(self, command: list[str]) -> OutputProtocol:
         return self._run_docker(
@@ -822,11 +887,14 @@ class Tools:
         )
 
     @_tool(
-        tool_description=(
-                "Show the repository structure for broad exploration when relevant files are unknown. "
+        description=(
+                "Show the repository structure for broad exploration when relevant files are unknown."
         ),
-        property_descriptions={},
-        additional_properties=False,
+        parameters=Parameters(
+            properties={},
+            required=[],
+            additional_properties=False,
+        ),
     )
     def repo_tree(self) -> OutputProtocol:
         files: list[str] = []
@@ -842,44 +910,6 @@ class Tools:
             content=files,
         )
 
-    @_tool(
-        tool_description="Run a Python script.",
-        property_descriptions={
-            "path": "Repository-relative file path."
-        },
-        additional_properties=False,
-    )
-    def run_python_file(self, path: str) -> OutputProtocol:
-
-        resolved_file = self.pather.resolve_file(path=path)
-
-        if resolved_file.is_fail():
-            return resolved_file
-
-        full_path = resolved_file.content
-
-        if full_path.suffix != ".py":
-            return OutputProtocol(
-                status=Status.ERROR,
-                message=f"File {full_path} is not a Python file"
-            )
-
-        return self._run_dockerized_file(
-            path=full_path
-        )
-
-    @_tool(
-        tool_description=(
-                    "Execute Python code from the repository root."
-        ),
-        property_descriptions={
-            "code": "Python code to execute."
-        },
-        additional_properties=False,
-    )
-    def run_python_code(self, code: str) -> OutputProtocol:
-        return self._run_dockerized_code(code)
-
 @dataclass(frozen=True)
 class ToolOutput:
     call_id: str
@@ -891,7 +921,7 @@ class ToolOutput:
             "call_id": self.call_id,
             "output": json.dumps(
                 self.output.serialize()
-            ),
+            )
         }
 
 @dataclass(frozen=True)
@@ -902,14 +932,14 @@ class ToolCall:
 
     def execute(self, tools: Tools) -> ToolOutput:
         if self.name not in tools.mapping:
-            output = {
-                "status": "error",
-                "message": f"tool {self.name} not found",
-            }
+            output = OutputProtocol(
+                status=Status.ERROR,
+                message=f"Tool {self.name} not found"
+            )
         else:
             output = tools.mapping[self.name](**self.args)
 
         return ToolOutput(
             call_id=self.call_id,
-            output=output,
+            output=output
         )

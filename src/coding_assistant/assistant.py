@@ -3,8 +3,8 @@ from openai.types.responses import Response
 from openai.types.shared_params import Reasoning
 from dotenv import load_dotenv
 
-from .tools.content import Tools, ToolCall
-from .logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog
+from .tools.content import Tools, ToolCall, ToolOutput
+from .logger import SessionLogger, ToolCallLog, LLMToolCallLog, LLMFinalCallLog, LLMCallLog
 from .config import Config, instructions
 
 import json
@@ -43,8 +43,54 @@ class Assistant:
         return wrapper
 
     @staticmethod
-    def _args_to_dict(args: str) -> dict:
-        return json.loads(args)
+    def _llm_call_log(
+            response: Response,
+            is_final: bool,
+            tool_calls: list[ToolCall] | None = None,
+            outputs: list[ToolOutput] | None = None
+    ) -> LLMCallLog:
+        usage = response.usage
+
+        if usage is not None:
+            input_tokens = usage.input_tokens
+            output_tokens = usage.output_tokens
+            reasoning_tokens = usage.output_tokens_details.reasoning_tokens
+        else:
+            input_tokens = 0
+            output_tokens = 0
+            reasoning_tokens = 0
+
+        if is_final:
+            return LLMFinalCallLog(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    reasoning_tokens=reasoning_tokens,
+                    response=response.output_text
+                )
+
+        if tool_calls is None or outputs is None:
+            raise ValueError(
+                "tool_calls and outputs are required for a tool call log"
+            )
+
+        if len(tool_calls) != len(outputs):
+            raise ValueError("Tool calls and outputs count mismatch")
+
+        return LLMToolCallLog(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
+                tool_calls=[
+                    ToolCallLog(
+                        name=call.name,
+                        args=call.args,
+                        output=tool_output.output,
+                    )
+                    for call, tool_output in zip(
+                        tool_calls, outputs
+                    )
+                ]
+            )
 
     def _llm_initial_call(self, query: str) -> Response:
         return self.client.responses.create(
@@ -65,7 +111,8 @@ class Assistant:
             reasoning=self.reasoning,
         )
 
-    def _tool_calls(self, response: Response) -> list[ToolCall]:
+    @staticmethod
+    def _tool_calls(response: Response) -> list[ToolCall]:
 
         tool_calls: list[ToolCall] = []
         for item in response.output:
@@ -73,7 +120,7 @@ class Assistant:
                 tool_calls.append(
                     ToolCall(
                         name=item.name,
-                        args=self._args_to_dict(item.arguments),
+                        args=json.loads(item.arguments),
                         call_id=item.call_id
                     )
                 )
@@ -92,30 +139,13 @@ class Assistant:
             response = self._llm_initial_call(query=query)
 
             for _ in range(self.config.max_iters):
-                tool_calls = self._tool_calls(
-                    response=response
-                )
-
-                usage = response.usage
-
-                if usage is not None:
-                    input_tokens = usage.input_tokens
-                    raw_output_tokens = usage.output_tokens
-                    reasoning_tokens = usage.output_tokens_details.reasoning_tokens
-                else:
-                    input_tokens = 0
-                    raw_output_tokens = 0
-                    reasoning_tokens = 0
-
-                output_tokens = raw_output_tokens - reasoning_tokens
+                tool_calls = self._tool_calls(response=response)
 
                 if not tool_calls:
                     session_logger.add_llm_call(
-                        LLMFinalCallLog(
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            reasoning_tokens=reasoning_tokens,
-                            response=response.output_text
+                        llm_call=self._llm_call_log(
+                            response=response,
+                            is_final=True,
                         )
                     )
                     return response.output_text
@@ -126,33 +156,17 @@ class Assistant:
                 ]
 
                 session_logger.add_llm_call(
-                    LLMToolCallLog(
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        reasoning_tokens=reasoning_tokens,
-                        tool_calls=[
-                            ToolCallLog(
-                                name=call.name,
-                                args=call.args,
-                                output=tool_output.output,
-                            )
-                            for call, tool_output in zip(
-                                tool_calls, outputs
-                            )
-                        ]
+                    llm_call=self._llm_call_log(
+                        response=response,
+                        is_final=False,
+                        tool_calls=tool_calls,
+                        outputs=outputs,
                     )
                 )
 
-                serialized_outputs = [
-                    output.serialize()
-                    for output in outputs
-                ]
-
-                response = self.client.responses.create(
-                    model=self.config.model_name,
-                    tools=self.tools.datas,
-                    input=serialized_outputs,
-                    previous_response_id=response.id,
+                response = self._llm_next_call(
+                    input_=[output.serialize() for output in outputs],
+                    prev_id=response.id,
                 )
 
             raise RuntimeError(
