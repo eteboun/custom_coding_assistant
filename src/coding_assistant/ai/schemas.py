@@ -74,8 +74,6 @@ def _load_models() -> ModelsData:
             f.read()
         )
 
-models_data = _load_models()
-
 class TokenUsage(BaseModel, Serializable):
     input_tokens: int = 0
     output_tokens: int = 0
@@ -110,6 +108,14 @@ class TokenUsage(BaseModel, Serializable):
             value=other.cached_input_tokens
         )
         self.cache_write_tokens = self._add_optional(
-            total=self.cached_write_tokens,
-            value=other.cached_write_tokens
+            total=self.cache_write_tokens,
+            value=other.cache_write_tokens
         )
+
+models_data = _load_models()
+
+models_by_provider: dict[ProviderId, list[ModelData]] = {}
+for model_data in models_data.models.values():
+    models_by_provider.setdefault(
+        model_data.provider, []
+    ).append(model_data)

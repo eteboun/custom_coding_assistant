@@ -1,8 +1,9 @@
 from pathlib import Path
 import inspect
 
-from .ai.config import Config
+from .ai.config import Config, config_reasoning_levels
 from .ai.llm import create_llm
+from .ai.schemas import models_by_provider
 
 class Assistant:
 
@@ -18,35 +19,27 @@ class Assistant:
             config=config
         )
 
+        self.mapping = self._get_command_function_mapping()
+
         print("Assistant initialized")
 
     @staticmethod
     def _command(func):
-        name = func.__name__
-
-        if not name.startswith("_command_"):
-            raise NameError(
-                "Invalid command function name"
-            )
-
         func.is_command = True
-        func.command_repr = "/" + name.removeprefix("_command_")
-
         return func
 
     def query(self, query: str) -> str:
-        match query.strip():
-            case "/usage":
-                return self._command_usage()
+        query = query.strip()
 
-            case "/model":
-                return self._command_model()
+        if query.startswith("/"):
+            command = query.removeprefix("/")
 
-            case "/help":
-                return self._command_help()
+            if command in self.mapping:
+                return self.mapping[command](self)
 
-            case _:
-                return self.llm.run(query)
+            return f"Command '{command}' not found.\n\n"
+
+        return self.llm.run(query)
 
     @staticmethod
     def _get_command_functions():
@@ -55,11 +48,21 @@ class Assistant:
         return [
             method
             for _, method in methods
-            if method.is_command
+            if getattr(method, "is_command", False)
         ]
 
+    @staticmethod
+    def _get_command_function_mapping():
+        methods = inspect.getmembers(Assistant, predicate=inspect.isfunction)
+
+        return {
+            method.__name__: method
+            for _, method in methods
+            if getattr(method, "is_command", False)
+        }
+
     @_command
-    def _command_usage(self) -> str:
+    def usage(self) -> str:
         """
         Shows current token usage information.
         """
@@ -69,25 +72,50 @@ class Assistant:
         return (
             f"Input tokens: {usage.input_tokens}\n"
             f"Output tokens: {usage.output_tokens}\n"
-            f"Reasoning tokens: {usage.reasoning_tokens}\n"
             f"Total tokens: {usage.total_tokens}\n"
+            f"Reasoning tokens: {usage.reasoning_tokens}\n"
             f"Cached input tokens: {usage.cached_input_tokens}\n"
-            f"Cache write tokens: {usage.cache_write_tokens}\n"
+            f"Cache write tokens: {usage.cache_write_tokens}\n\n"
         )
 
     @_command
-    def _command_model(self) -> str:
+    def model(self) -> str:
         """
         Shows current model.
         """
 
         return (
             f"Current model: {self.llm.model_data.id}\n"
-            f"Reasoning: {self.llm.config.reasoning}"
+            f"Reasoning: {self.llm.config.reasoning}\n\n"
         )
 
     @_command
-    def _command_help(self) -> str:
+    def models(self) -> str:
+        """
+        Shows available models.
+        """
+
+        text: list[str] = []
+        for provider, model_datas in models_by_provider.items():
+            sub_text: list[str] = [f"Provider: {provider.capitalize()}"]
+
+            for model_data in model_datas:
+                sub_text.append(f" {model_data.id}")
+
+            text.append('\n'.join(sub_text))
+
+        return '\n\n'.join(text) + '\n\n'
+
+    @_command
+    def reasoning_levels(self) -> str:
+        """
+        Shows valid reasoning levels.
+        """
+
+        return f"Valid reasoning levels: {', '.join(config_reasoning_levels)}.\n\n"
+
+    @_command
+    def help(self) -> str:
         """
         Shows command descriptions.
         """
@@ -95,7 +123,7 @@ class Assistant:
         commands = self._get_command_functions()
 
         descriptions = [
-            f"{command.command_repr} -> {inspect.getdoc(command)}"
+            f"/{command.__name__} -> {inspect.getdoc(command)}"
             for command in commands
         ]
 
