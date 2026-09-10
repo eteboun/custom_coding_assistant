@@ -42,6 +42,9 @@ class Assistant:
             case "/model":
                 return self._command_model()
 
+            case "/help":
+                return self._command_help()
+
             case _:
                 return self.llm.run(query)
 
