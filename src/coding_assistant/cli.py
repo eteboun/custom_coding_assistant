@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .assistant import Assistant
-from coding_assistant.ai.config import Config, config_filename, instructions
+from .ai.config import Config, config_filename, instructions
 
 from dotenv import load_dotenv
 

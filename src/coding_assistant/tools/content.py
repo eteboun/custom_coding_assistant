@@ -6,8 +6,8 @@ from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
 
-from coding_assistant.tools.schemas import Symbol, SymbolKind, ToolSchema, Parameters
-from coding_assistant.tools.utils import (symbol_matches, parse_python_file, _strip_final_newline,
+from .schemas import Symbol, SymbolKind, ToolSchema, Parameters
+from .utils import (symbol_matches, parse_python_file, _strip_final_newline,
                     Pather, OutputProtocol, Status, Replacement)
 
 class Tools:

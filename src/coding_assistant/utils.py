@@ -6,4 +6,3 @@ class Serializable(ABC):
     @abstractmethod
     def serialize(self) -> Any:
         ...
-
