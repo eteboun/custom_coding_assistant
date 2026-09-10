@@ -54,7 +54,6 @@ class ToolSchema(Serializable):
     @override
     def serialize(self) -> dict:
         return {
-            "type": "function",
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters.serialize(),

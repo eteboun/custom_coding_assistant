@@ -10,13 +10,14 @@ instructions = (
 ).read_text(encoding="utf-8")
 
 config_filename = "assistant.json"
+config_reasoning_levels = Literal[
+                    "low", "medium", "high"
+               ]
 
 class Config(BaseModel):
 
     model_name: str
-    reasoning: Literal[
-                   "none", "minimal", "low", "medium", "high", "xhigh", "max"
-               ] | None = None
+    reasoning: config_reasoning_levels | None = None
 
     max_iters: int
 

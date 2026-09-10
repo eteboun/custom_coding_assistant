@@ -1,0 +1,62 @@
+{
+  "openai": {
+    "api_style": "responses",
+
+    "reasoning": {
+      "field": "reasoning.effort"
+    },
+
+    "conversation_state": {
+      "mode": "server_managed",
+      "continuation_field": "previous_response_id"
+    },
+
+    "tool_calling": {
+      "supported": true,
+      "parallel_tool_calls": true,
+      "parallel_control_field": "parallel_tool_calls",
+      "tool_result_matching": "call_id"
+    }
+  },
+
+  "anthropic": {
+    "api_style": "messages",
+
+    "reasoning": {
+      "field": "output_config.effort"
+    },
+
+    "conversation_state": {
+      "mode": "client_managed",
+      "continuation_field": null
+    },
+
+    "tool_calling": {
+      "supported": true,
+      "parallel_tool_calls": true,
+      "parallel_control_field": "tool_choice.disable_parallel_tool_use",
+      "tool_result_matching": "tool_use_id"
+    }
+  },
+
+  "google": {
+    "api_style": "gemini",
+
+    "reasoning": {
+      "field": "thinking_level"
+    },
+
+    "conversation_state": {
+      "mode": "client_managed",
+      "continuation_field": null,
+      "requires_thought_signature_preservation": true
+    },
+
+    "tool_calling": {
+      "supported": true,
+      "parallel_tool_calls": true,
+      "parallel_control_field": null,
+      "tool_result_matching": "function_call_id"
+    }
+  }
+}

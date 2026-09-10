@@ -201,7 +201,7 @@ class Tools:
             if getattr(func, "is_tool", False)
         }
 
-    def _tool_datas(self) -> list:
+    def _tool_datas(self) -> list[ToolSchema]:
 
         return [
             func.tool_data
@@ -226,7 +226,7 @@ class Tools:
             )
 
             func.is_tool = True
-            func.tool_data = tool_data.serialize()
+            func.tool_data = tool_data
 
             return func
 
@@ -912,12 +912,13 @@ class Tools:
 
 @dataclass(frozen=True)
 class ToolOutput:
+    name: str
     call_id: str
     output: OutputProtocol
 
     def serialize(self) -> dict:
         return {
-            "type": "function_call_output",
+            "name": self.name,
             "call_id": self.call_id,
             "output": json.dumps(
                 self.output.serialize()
@@ -940,6 +941,7 @@ class ToolCall:
             output = tools.mapping[self.name](**self.args)
 
         return ToolOutput(
+            name=self.name,
             call_id=self.call_id,
             output=output
         )
