@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .assistant import Assistant
-from .config import Config, config_filename
+from coding_assistant.ai.config import Config, config_filename
 
 def main():
     repo_path = Path.cwd()

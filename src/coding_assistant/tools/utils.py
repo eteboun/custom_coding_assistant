@@ -1,10 +1,11 @@
 import ast
 from pathlib import Path
 from typing import Any, override
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
 from enum import StrEnum
+
+from ..utils import Serializable
 
 class Replacement(BaseModel):
 
@@ -19,12 +20,6 @@ class Status(StrEnum):
 
     SUCCESS = "success"
     ERROR = "error"
-
-class Serializable(ABC):
-
-    @abstractmethod
-    def serialize(self) -> Any:
-        ...
 
 @dataclass
 class OutputProtocol(Serializable):

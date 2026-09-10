@@ -1,8 +1,7 @@
-from typing import Literal, Generic, TypeVar, override
 from pathlib import Path
+from typing import Generic, TypeVar, override
 import json
 
-from pydantic import BaseModel
 from abc import ABC, abstractmethod
 
 from openai import OpenAI
@@ -19,143 +18,82 @@ from anthropic.types import (ToolParam, MessageParam,
                              ThinkingConfigAdaptiveParam, OutputConfigParam,
                              Message, ToolResultBlockParam)
 
-from coding_assistant.config import config_reasoning_levels
-from coding_assistant.tools.content import Tools, ToolCall, ToolOutput
+from .schemas import models_data, ModelData, ProviderId, TokenUsage
+from .logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
+from .config import Config
+from ..tools.content import Tools, ToolCall, ToolOutput
 
 ClientT = TypeVar("ClientT")
-
-_models_json = Path(__file__).resolve().parent / "llm_data" / "models.json"
-_providers_json = Path(__file__).resolve().parent / "llm_data" / "providers.json"
-
-ProviderId = Literal[
-    "openai",
-    "anthropic",
-    "google",
-]
-
-ReasoningLevel = Literal[
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-]
-
-class ModelPricing(BaseModel):
-    input: float
-    output: float
-
-    cached_input: float | None = None
-
-    cache_write_5m: float | None = None
-    cache_write_1h: float | None = None
-
-
-class AboveThresholdPricing(BaseModel):
-    input: float
-    output: float
-
-
-class ModelPricingRules(BaseModel):
-    long_context_threshold: int | None = None
-
-    above_threshold_input_multiplier: float | None = None
-    above_threshold_output_multiplier: float | None = None
-
-    above_threshold: AboveThresholdPricing | None = None
-
-
-class ModelData(BaseModel):
-    id: str
-    provider: ProviderId
-
-    context_window: int
-    max_output_tokens: int
-
-    reasoning_levels: list[ReasoningLevel] | None = None
-
-    pricing: ModelPricing
-    pricing_rules: ModelPricingRules | None = None
-
-
-class ModelsData(BaseModel):
-    currency: Literal["USD"]
-    pricing_unit: Literal["per_1m_tokens"]
-
-    models: dict[str, ModelData]
-
-def load_models() -> ModelsData:
-    with open(_models_json) as f:
-        return ModelsData.model_validate_json(
-            f.read()
-        )
-
-models_data = load_models()
 
 class BaseLLM(ABC, Generic[ClientT]):
     def __init__(
             self,
-            model_name: str,
             instructions: str,
-            max_iters: int,
-            reasoning: config_reasoning_levels | None,
+            repo_path: Path,
+            config: Config,
             client: ClientT,
-            tools: Tools,
-            model_data: ModelData
+            provider: ProviderId
     ):
-        if max_iters <= 0:
-            raise ValueError("max_iters must be a positive integer")
-
-        self.model_name = model_name
-        self.instructions = instructions
-        self.max_iters = max_iters
+        self.config = config
         self.client = client
-        self.tools = tools
+        self.instructions = instructions
 
-        self.model_data = model_data
-        self.reasoning = reasoning
+        self.model_data = self._resolve_model(
+            provider=provider
+        )
 
-    @staticmethod
-    def validate_datas(model: str,
-                       provider: ProviderId,
-                       reasoning: config_reasoning_levels | None
-                       ) -> tuple[ModelData, config_reasoning_levels | None]:
+        self.tools = Tools(
+            repo_path=repo_path,
+            blocked_files=config.blocked_files,
+            blocked_dirs=config.blocked_dirs
+        )
+
+        self.logger = Logger(
+            log_path=config.log_path
+        )
+
+    def _resolve_model(
+            self,
+            provider: ProviderId,
+        ) -> ModelData:
 
         model_data = models_data.models.get(
-            model
+            self.config.model_name
         )
 
         if model_data is None:
             raise ValueError(
-                f"Model {model} is not recognized"
+                f"Model {self.config.model_name} is not recognized"
             )
 
         if model_data.provider != provider:
             raise ValueError(
-                f"Model {model} does not belong to {provider}"
+                f"Model {self.config.model_name} does not belong to {provider}"
             )
 
         reasoning_levels = model_data.reasoning_levels
 
         if reasoning_levels:
-            if reasoning is None:
+            if self.config.reasoning is None:
                 raise ValueError(
-                    f"reasoning is required for {model}"
+                    f"reasoning is required for {self.config.model_name}"
                 )
 
-            if reasoning not in reasoning_levels:
+            if self.config.reasoning not in reasoning_levels:
                 raise ValueError(
-                    f"{model} does not support reasoning level {reasoning}"
+                    f"{self.config.model_name} does not support reasoning level {self.config.reasoning}"
                 )
 
-        elif reasoning is not None:
+        elif self.config.reasoning is not None:
             raise ValueError(
-                f"{model} does not support configurable reasoning"
+                f"{self.config.model_name} does not support configurable reasoning"
             )
 
-        return model_data, reasoning
+        return model_data
+
+    @abstractmethod
+    def usage(self, response) -> TokenUsage:
+        ...
 
     @abstractmethod
     def output_text(self, response) -> str:
@@ -181,50 +119,77 @@ class BaseLLM(ABC, Generic[ClientT]):
     def next_call(self, response, outputs):
         ...
 
+    def log(self) -> None:
+        self.logger.log()
+
     def run(self, query: str) -> str:
-        response = self.initial_call(query)
+        query_log = QueryLog(query=query)
 
-        for _ in range(self.max_iters):
-            tool_calls = self.tool_call_contract(response)
+        try:
+            response = self.initial_call(query)
 
-            if not tool_calls:
-                return self.output_text(response)
+            for i in range(self.config.max_iters):
+                tool_calls = self.tool_call_contract(response)
+                usage = self.usage(response=response)
 
-            response = self.next_call(
-                response=response,
-                outputs=[
-                    tool_call.execute(self.tools)
-                    for tool_call in tool_calls
-                ],
+                if not tool_calls:
+                    output_text = self.output_text(response)
+
+                    query_log.add_llm_call(LLMFinalCallLog(
+                        usage=usage,
+                        response=output_text
+                    ))
+                    return output_text
+
+                if i == self.config.max_iters - 1:
+                    query_log.add_llm_call(LLMToolCallLog(
+                        usage=usage,
+                        tool_calls=[ToolCallLog(
+                            name=call.name,
+                            args=call.args
+                        ) for call in tool_calls]
+                    ))
+                    raise RuntimeError(
+                        f"Maximum iteration limit reached: {self.config.max_iters}"
+                    )
+
+                outputs = [
+                        tool_call.execute(self.tools)
+                        for tool_call in tool_calls
+                    ]
+
+                query_log.add_llm_call(LLMToolCallLog(
+                    usage=usage,
+                    tool_calls=[ToolCallLog(
+                        name=call.name,
+                        args=call.args,
+                        output=tool_output.output
+                    ) for call, tool_output in zip(tool_calls, outputs)]
+                ))
+
+                response = self.next_call(
+                    response=response,
+                    outputs=outputs
+                )
+
+        finally:
+            self.logger.add_query_log(
+                query_log=query_log
             )
-
-        raise RuntimeError(
-            f"Maximum iteration limit reached: {self.max_iters}"
-        )
 
 class OpenAILLM(BaseLLM[OpenAI]):
     def __init__(
             self,
-            model_name: str,
             instructions: str,
-            max_iters: int,
-            reasoning: config_reasoning_levels | None,
-            tools: Tools,
+            repo_path: Path,
+            config: Config,
     ):
-        model_data, reasoning = self.validate_datas(
-            model=model_name,
-            reasoning=reasoning,
-            provider="openai"
-        )
-
         super().__init__(
-            model_name=model_name,
             instructions=instructions,
-            max_iters=max_iters,
-            reasoning=reasoning,
-            client=OpenAI(),
-            tools=tools,
-            model_data=model_data,
+            repo_path=repo_path,
+            config=config,
+            provider="openai",
+            client=OpenAI()
         )
 
     def _generate(
@@ -234,9 +199,9 @@ class OpenAILLM(BaseLLM[OpenAI]):
     ) -> Response:
         kwargs = {}
 
-        if self.reasoning is not None:
+        if self.config.reasoning is not None:
             kwargs["reasoning"] = Reasoning(
-                effort=self.reasoning
+                effort=self.config.reasoning
             )
 
         if prev_id is not None:
@@ -251,6 +216,19 @@ class OpenAILLM(BaseLLM[OpenAI]):
         )
 
     @override
+    def usage(self, response: Response) -> TokenUsage:
+        usage = response.usage
+
+        return TokenUsage(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
+            total_tokens=usage.total_tokens,
+            cached_input_tokens=usage.input_tokens_details.cached_tokens,
+            cache_write_tokens=usage.input_tokens_details.cache_write_tokens
+        )
+
+    @override
     def output_text(self, response: Response) -> str:
         return response.output_text
 
@@ -260,7 +238,9 @@ class OpenAILLM(BaseLLM[OpenAI]):
             ToolCall(
                 call_id=item.call_id,
                 name=item.name,
-                args=json.loads(item.arguments),
+                args=json.loads(
+                    item.arguments
+                ),
             )
             for item in response.output
             if item.type == "function_call"
@@ -310,26 +290,16 @@ class OpenAILLM(BaseLLM[OpenAI]):
 class GeminiLLM(BaseLLM[genai.Client]):
     def __init__(
             self,
-            model_name: str,
             instructions: str,
-            max_iters: int,
-            reasoning: config_reasoning_levels | None,
-            tools: Tools,
+            repo_path: Path,
+            config: Config
     ):
-        model_data, reasoning = self.validate_datas(
-            model=model_name,
-            reasoning=reasoning,
-            provider="google"
-        )
-
         super().__init__(
-            model_name=model_name,
             instructions=instructions,
-            max_iters=max_iters,
-            reasoning=reasoning,
-            client=genai.Client(),
-            tools=tools,
-            model_data=model_data,
+            repo_path=repo_path,
+            config=config,
+            provider="google",
+            client=genai.Client()
         )
 
     def _generate(
@@ -339,8 +309,8 @@ class GeminiLLM(BaseLLM[genai.Client]):
     ) -> Interaction:
         generation_config = {}
 
-        if self.reasoning is not None:
-            generation_config["thinking_level"] = self.reasoning
+        if self.config.reasoning is not None:
+            generation_config["thinking_level"] = self.config.reasoning
 
         return self.client.interactions.create(
             model=self.model_data.id,
@@ -353,6 +323,18 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 if prev_id is not None
                 else {}
             ),
+        )
+
+    @override
+    def usage(self, response: Interaction) -> TokenUsage:
+        usage = response.usage
+
+        return TokenUsage(
+            input_tokens=usage.total_input_tokens,
+            output_tokens=usage.total_output_tokens,
+            reasoning_tokens=usage.total_thought_tokens,
+            total_tokens=usage.total_tokens,
+            cached_input_tokens=usage.total_cached_tokens
         )
 
     @override
@@ -431,26 +413,16 @@ class GeminiLLM(BaseLLM[genai.Client]):
 class AnthropicLLM(BaseLLM[Anthropic]):
     def __init__(
             self,
-            model_name: str,
             instructions: str,
-            max_iters: int,
-            reasoning: config_reasoning_levels | None,
-            tools: Tools,
+            repo_path: Path,
+            config: Config
     ):
-        model_data, reasoning = self.validate_datas(
-            model=model_name,
-            reasoning=reasoning,
-            provider="anthropic"
-        )
-
         super().__init__(
-            model_name=model_name,
             instructions=instructions,
-            max_iters=max_iters,
-            reasoning=reasoning,
-            client=Anthropic(),
-            tools=tools,
-            model_data=model_data,
+            repo_path=repo_path,
+            config=config,
+            provider="anthropic",
+            client=Anthropic()
         )
 
         self.messages: list[MessageParam] = []
@@ -461,9 +433,9 @@ class AnthropicLLM(BaseLLM[Anthropic]):
     ) -> Message:
         kwargs = {}
 
-        if self.reasoning is not None:
+        if self.config.reasoning is not None:
             kwargs["output_config"] = OutputConfigParam(
-                        effort=self.reasoning
+                        effort=self.config.reasoning
                     )
 
         return self.client.messages.create(
@@ -476,6 +448,25 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                 type="adaptive"
             ),
             **kwargs
+        )
+
+    @override
+    def usage(self, response: Message) -> TokenUsage:
+        usage = response.usage
+
+        reasoning_tokens = (
+            usage.output_tokens_details.thinking_tokens
+            if usage.output_tokens_details is not None
+            else None
+        )
+
+        return TokenUsage(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=usage.cache_read_input_tokens,
+            cache_write_tokens=usage.cache_creation_input_tokens,
+            total_tokens=usage.input_tokens + usage.output_tokens,
         )
 
     @override
@@ -549,3 +540,42 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         })
 
         return self._generate(self.messages)
+
+def create_llm(
+        instructions: str,
+        repo_path: Path,
+        config: Config
+) -> BaseLLM:
+    model_data = models_data.models.get(config.model_name)
+
+    if model_data is None:
+        raise ValueError(
+            f"Model {config.model_name} not found."
+        )
+
+    match model_data.provider:
+        case "openai":
+            return OpenAILLM(
+                instructions=instructions,
+                repo_path=repo_path,
+                config=config,
+            )
+
+        case "google":
+            return GeminiLLM(
+                instructions=instructions,
+                repo_path=repo_path,
+                config=config,
+            )
+
+        case "anthropic":
+            return AnthropicLLM(
+                instructions=instructions,
+                repo_path=repo_path,
+                config=config,
+            )
+
+        case _:
+            raise ValueError(
+                f"Unknown provider {model_data.provider}"
+            )

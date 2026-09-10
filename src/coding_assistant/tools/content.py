@@ -1,7 +1,6 @@
 import subprocess
 import ast
 import inspect
-import json
 
 from collections.abc import Callable
 from pathlib import Path
@@ -915,15 +914,6 @@ class ToolOutput:
     name: str
     call_id: str
     output: OutputProtocol
-
-    def serialize(self) -> dict:
-        return {
-            "name": self.name,
-            "call_id": self.call_id,
-            "output": json.dumps(
-                self.output.serialize()
-            )
-        }
 
 @dataclass(frozen=True)
 class ToolCall:
