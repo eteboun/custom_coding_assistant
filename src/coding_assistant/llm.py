@@ -19,7 +19,7 @@ from anthropic.types import (ToolParam, MessageParam,
                              ThinkingConfigAdaptiveParam, OutputConfigParam,
                              Message, ToolResultBlockParam)
 
-from coding_assistant.config import Config, config_reasoning_levels
+from coding_assistant.config import config_reasoning_levels
 from coding_assistant.tools.content import Tools, ToolCall, ToolOutput
 
 ClientT = TypeVar("ClientT")
@@ -96,18 +96,23 @@ models_data = load_models()
 
 class BaseLLM(ABC, Generic[ClientT]):
     def __init__(
-        self,
-        config: Config,
-        client: ClientT,
-        instructions: str,
-        tools: Tools,
-        model_data: ModelData,
-        reasoning: config_reasoning_levels | None,
+            self,
+            model_name: str,
+            instructions: str,
+            max_iters: int,
+            reasoning: config_reasoning_levels | None,
+            client: ClientT,
+            tools: Tools,
+            model_data: ModelData
     ):
-        self.client = client
+        if max_iters <= 0:
+            raise ValueError("max_iters must be a positive integer")
+
+        self.model_name = model_name
         self.instructions = instructions
+        self.max_iters = max_iters
+        self.client = client
         self.tools = tools
-        self.config = config
 
         self.model_data = model_data
         self.reasoning = reasoning
@@ -179,7 +184,7 @@ class BaseLLM(ABC, Generic[ClientT]):
     def run(self, query: str) -> str:
         response = self.initial_call(query)
 
-        for _ in range(self.config.max_iters):
+        for _ in range(self.max_iters):
             tool_calls = self.tool_call_contract(response)
 
             if not tool_calls:
@@ -194,29 +199,32 @@ class BaseLLM(ABC, Generic[ClientT]):
             )
 
         raise RuntimeError(
-            f"Maximum iteration limit reached: {self.config.max_iters}"
+            f"Maximum iteration limit reached: {self.max_iters}"
         )
 
 class OpenAILLM(BaseLLM[OpenAI]):
     def __init__(
-        self,
-        config: Config,
-        instructions: str,
-        tools: Tools,
+            self,
+            model_name: str,
+            instructions: str,
+            max_iters: int,
+            reasoning: config_reasoning_levels | None,
+            tools: Tools,
     ):
         model_data, reasoning = self.validate_datas(
-            model=config.model_name,
-            reasoning=config.reasoning,
+            model=model_name,
+            reasoning=reasoning,
             provider="openai"
         )
 
         super().__init__(
-            config=config,
-            client=OpenAI(),
+            model_name=model_name,
             instructions=instructions,
+            max_iters=max_iters,
+            reasoning=reasoning,
+            client=OpenAI(),
             tools=tools,
             model_data=model_data,
-            reasoning=reasoning,
         )
 
     def _generate(
@@ -301,24 +309,27 @@ class OpenAILLM(BaseLLM[OpenAI]):
 
 class GeminiLLM(BaseLLM[genai.Client]):
     def __init__(
-        self,
-        config: Config,
-        instructions: str,
-        tools: Tools,
+            self,
+            model_name: str,
+            instructions: str,
+            max_iters: int,
+            reasoning: config_reasoning_levels | None,
+            tools: Tools,
     ):
         model_data, reasoning = self.validate_datas(
-            model=config.model_name,
-            reasoning=config.reasoning,
+            model=model_name,
+            reasoning=reasoning,
             provider="google"
         )
 
         super().__init__(
-            config=config,
-            client=genai.Client(),
+            model_name=model_name,
             instructions=instructions,
+            max_iters=max_iters,
+            reasoning=reasoning,
+            client=genai.Client(),
             tools=tools,
             model_data=model_data,
-            reasoning=reasoning,
         )
 
     def _generate(
@@ -401,9 +412,7 @@ class GeminiLLM(BaseLLM[genai.Client]):
 
     @override
     def initial_call(self, query: str) -> Interaction:
-        return self._generate(
-            inputs=query
-        )
+        return self._generate(query)
 
     @override
     def next_call(
@@ -421,25 +430,27 @@ class GeminiLLM(BaseLLM[genai.Client]):
 
 class AnthropicLLM(BaseLLM[Anthropic]):
     def __init__(
-        self,
-        config: Config,
-        instructions: str,
-        tools: Tools,
+            self,
+            model_name: str,
+            instructions: str,
+            max_iters: int,
+            reasoning: config_reasoning_levels | None,
+            tools: Tools,
     ):
-
         model_data, reasoning = self.validate_datas(
-            model=config.model_name,
-            reasoning=config.reasoning,
+            model=model_name,
+            reasoning=reasoning,
             provider="anthropic"
         )
 
         super().__init__(
-            config=config,
-            client=Anthropic(),
+            model_name=model_name,
             instructions=instructions,
+            max_iters=max_iters,
+            reasoning=reasoning,
+            client=Anthropic(),
             tools=tools,
             model_data=model_data,
-            reasoning=reasoning,
         )
 
         self.messages: list[MessageParam] = []
