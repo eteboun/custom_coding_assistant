@@ -63,48 +63,15 @@ class QueryLog(Serializable):
     def add_llm_call(self, llm_call: LLMCallLog) -> None:
         self.llm_calls.append(llm_call)
 
-    @staticmethod
-    def _add_optional(total: int | None, value: int | None) -> int | None:
-        if value is None:
-            return total
+    def total_usage(self) -> TokenUsage:
+        usage = TokenUsage()
 
-        return (total or 0) + value
+        for llm_call in self.llm_calls:
+            usage.add(llm_call.usage)
+
+        return usage
 
     def serialize(self) -> dict:
-        total_input_tokens = 0
-        total_output_tokens = 0
-        total_tokens = 0
-
-        total_reasoning_tokens: int | None = None
-        total_cached_input_tokens: int | None = None
-        total_cached_write_tokens: int | None = None
-
-        for call in self.llm_calls:
-            total_input_tokens += call.usage.input_tokens
-            total_output_tokens += call.usage.output_tokens
-            total_tokens += call.usage.total_tokens
-
-            total_reasoning_tokens = self._add_optional(
-                total=total_reasoning_tokens,
-                value=call.usage.reasoning_tokens
-            )
-            total_cached_input_tokens = self._add_optional(
-                total=total_cached_input_tokens,
-                value=call.usage.cached_input_tokens
-            )
-            total_cached_write_tokens = self._add_optional(
-                total=total_cached_write_tokens,
-                value=call.usage.cached_write_tokens
-            )
-
-        usage = TokenUsage(
-            input_tokens=total_input_tokens,
-            output_tokens=total_output_tokens,
-            reasoning_tokens=total_reasoning_tokens,
-            cached_input_tokens=total_cached_input_tokens,
-            cache_write_tokens=total_cached_write_tokens,
-            total_tokens=total_tokens,
-        )
 
         return {
             "query": self.query,
@@ -112,7 +79,7 @@ class QueryLog(Serializable):
                 call.serialize()
                 for call in self.llm_calls
             ],
-            "usage": usage.serialize()
+            "usage": self.total_usage().serialize(),
         }
 
 @dataclass
@@ -125,6 +92,14 @@ class Logger(Serializable):
             query_log.serialize()
             for query_log in self.query_logs
         ]
+
+    def total_usage(self) -> TokenUsage:
+        usage = TokenUsage()
+
+        for query_log in self.query_logs:
+            usage.add(query_log.total_usage())
+
+        return usage
 
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)

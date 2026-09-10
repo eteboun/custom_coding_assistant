@@ -77,14 +77,39 @@ def _load_models() -> ModelsData:
 models_data = _load_models()
 
 class TokenUsage(BaseModel, Serializable):
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     reasoning_tokens: int | None = None
     cached_input_tokens: int | None = None
     cache_write_tokens: int | None = None
 
-    total_tokens: int
+    total_tokens: int = 0
 
     def serialize(self) -> Any:
         return self.model_dump()
+
+    @staticmethod
+    def _add_optional(total: int | None, value: int | None) -> int | None:
+        if value is None:
+            return total
+
+        return (total or 0) + value
+
+    def add(self, other: TokenUsage) -> None:
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
+        self.total_tokens += other.total_tokens
+
+        self.reasoning_tokens = self._add_optional(
+            total=self.reasoning_tokens,
+            value=other.reasoning_tokens
+        )
+        self.cached_input_tokens = self._add_optional(
+            total=self.cached_input_tokens,
+            value=other.cached_input_tokens
+        )
+        self.cache_write_tokens = self._add_optional(
+            total=self.cached_write_tokens,
+            value=other.cached_write_tokens
+        )
