@@ -20,7 +20,7 @@ _config_reasoning_levels = Literal[
 
 config_reasoning_levels = get_args(_config_reasoning_levels)
 
-models_json = _BASE_DIR / "llm_data" / "models.json"
+models_json = _BASE_DIR.parent / "llm_data" / "models.json"
 workflows_dir = _BASE_DIR.parent / "workflows"
 
 class Config(BaseModel):

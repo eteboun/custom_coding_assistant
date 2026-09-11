@@ -2,19 +2,22 @@ from pathlib import Path
 import inspect
 
 from .ai.config import Config, config_reasoning_levels
-from .ai.llm import create_llm
 from .ai.schemas import models_by_provider
+
+from .llm import create_llm
 
 class Assistant:
 
     def __init__(
             self,
             instructions: str,
+            workflow_instructions: str,
             repo_path: Path,
             config: Config
     ) -> None:
         self.llm = create_llm(
             instructions=instructions,
+            workflow_instructions=workflow_instructions,
             repo_path=repo_path,
             config=config
         )

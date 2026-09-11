@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .assistant import Assistant
-from .ai.config import Config, config_filename, instructions
+from .ai.config import Config, config_filename, instructions, workflow_instructions
 
 from dotenv import load_dotenv
 
@@ -15,7 +15,8 @@ def main():
     assistant_ = Assistant(
         repo_path=repo_path,
         config=config,
-        instructions=instructions
+        instructions=instructions,
+        workflow_instructions=workflow_instructions
     )
 
     while True:

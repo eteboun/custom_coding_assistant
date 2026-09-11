@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 from ..utils import Serializable
-from .config import models_json, workflows_dir, workflow_instructions
+from .config import models_json, workflows_dir
 
 ProviderId = Literal[
     "openai",
@@ -46,11 +46,20 @@ class WorkflowSelection(BaseModel):
 
 @dataclass
 class Workflows:
-    map: dict[str, Workflow]
-    instructions: str = field(init=False)
+    instructions: str
+
+    map: dict[str, Workflow] = field(
+        default_factory=lambda: {
+            f.name: Workflow(
+                name=f.name,
+                path=f.resolve(),
+            )
+            for f in workflows_dir.iterdir()
+        }
+    )
 
     def __post_init__(self):
-        self.instructions = workflow_instructions.format(
+        self.instructions = self.instructions.format(
             available_workflows="\n".join(
                 f"- {workflow.name}: {workflow.summary}"
                 for workflow in self.map.values()
@@ -59,16 +68,6 @@ class Workflows:
 
     def from_selection(self, selection: WorkflowSelection) -> Workflow:
         return self.map[selection.workflow]
-
-workflows = Workflows(
-    map={
-        f.name: Workflow(
-            name=f.name,
-            path=f.resolve(),
-        )
-        for f in workflows_dir.iterdir()
-    }
-)
 
 class ModelPricing(BaseModel):
     input: float

@@ -22,4 +22,10 @@ myassistant = "coding_assistant.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-coding_agent = ["ai/instructions.txt"]
+coding_agent = [
+    "ai/instructions.md",
+    "ai/workflow_instructions.md",
+    "llm_data/*.json",
+    "workflows/**/*.md",
+    "workflows/**/*.txt"
+]
