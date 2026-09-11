@@ -39,9 +39,11 @@ class Workflow:
 
 class WorkflowSelection(BaseModel):
     workflow: Literal[
+        "documentation",
+        "build",
         "bug_fix",
         "new_feature",
-        "investigation",
+        "investigation"
     ]
 
 @dataclass

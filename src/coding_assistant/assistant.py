@@ -127,6 +127,19 @@ class Assistant:
         return log_output.message
 
     @_command
+    def workflows(self) -> str:
+        """
+        Shows available workflows.
+        """
+
+        workflows = self.llm.workflows.map.keys()
+        return (f"Available workflows:\n"
+                f"{'\n'.join(tuple(map(
+                    lambda wf: '- ' + wf,
+                    workflows
+                )))}")
+
+    @_command
     def help(self) -> str:
         """
         Shows command descriptions.
