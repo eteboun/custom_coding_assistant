@@ -6,8 +6,12 @@ import json
 _BASE_DIR = Path(__file__).resolve().parent
 
 instructions = (
-    _BASE_DIR / "instructions.txt"
-).read_text(encoding="utf-8")
+    _BASE_DIR / "instructions.md"
+).read_text()
+
+workflow_instructions = (
+    _BASE_DIR / "workflow_instructions.md"
+).read_text()
 
 config_filename = "assistant.json"
 _config_reasoning_levels = Literal[
@@ -15,6 +19,9 @@ _config_reasoning_levels = Literal[
                ]
 
 config_reasoning_levels = get_args(_config_reasoning_levels)
+
+models_json = _BASE_DIR / "llm_data" / "models.json"
+workflows_dir = _BASE_DIR.parent / "workflows"
 
 class Config(BaseModel):
 

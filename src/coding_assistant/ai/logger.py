@@ -4,8 +4,8 @@ from pathlib import Path
 import json
 
 from ..utils import Serializable
-from ..tools.utils import OutputProtocol
-from .schemas import TokenUsage
+from ..utils import OutputProtocol
+from .schemas import TokenUsage, WorkflowSelection
 
 @dataclass
 class ToolCallLog(Serializable):
@@ -31,6 +31,16 @@ class LLMCallLog(Serializable):
 
     def serialize(self) -> dict:
         return self.usage.serialize()
+
+@dataclass
+class LLMWorkflowSelectionLog(LLMCallLog):
+    selection: WorkflowSelection
+
+    def serialize(self) -> dict:
+        return {
+            "usage": super().serialize(),
+            "workflow": self.selection.workflow
+        }
 
 @dataclass
 class LLMToolCallLog(LLMCallLog):
@@ -72,7 +82,6 @@ class QueryLog(Serializable):
         return usage
 
     def serialize(self) -> dict:
-
         return {
             "query": self.query,
             "llm_calls": [
@@ -104,7 +113,13 @@ class Logger(Serializable):
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)
 
-    def log(self) -> None:
+    def log(self) -> OutputProtocol:
+        if len(self.query_logs) == 0:
+            return OutputProtocol(
+                status="error",
+                message="Nothing to log."
+            )
+
         self.log_path.mkdir(parents=True, exist_ok=True)
 
         name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
@@ -112,3 +127,9 @@ class Logger(Serializable):
 
         with open(self.log_path / f"{name}.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+
+        return OutputProtocol(
+            status="success",
+            content=name,
+            message=f"Successfully logged as {name}."
+        )

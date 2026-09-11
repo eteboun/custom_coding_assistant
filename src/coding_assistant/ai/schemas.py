@@ -3,8 +3,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 from typing import Literal, Any
 from pathlib import Path
+from dataclasses import dataclass, field
 
 from ..utils import Serializable
+from .config import models_json, workflows_dir, workflow_instructions
 
 ProviderId = Literal[
     "openai",
@@ -22,8 +24,51 @@ ReasoningLevel = Literal[
     "max",
 ]
 
-_BASE_DIR = Path(__file__).resolve().parent / "llm_data"
-_models_json = _BASE_DIR / "models.json"
+@dataclass
+class Workflow:
+    path: Path
+    name: str
+
+    @property
+    def content(self):
+        return (self.path / f"{self.name}.md").read_text()
+
+    @property
+    def summary(self):
+        return (self.path / "summary.txt").read_text()
+
+class WorkflowSelection(BaseModel):
+    workflow: Literal[
+        "bug_fix",
+        "new_feature",
+        "investigation",
+    ]
+
+@dataclass
+class Workflows:
+    map: dict[str, Workflow]
+    instructions: str = field(init=False)
+
+    def __post_init__(self):
+        self.instructions = workflow_instructions.format(
+            available_workflows="\n".join(
+                f"- {workflow.name}: {workflow.summary}"
+                for workflow in self.map.values()
+            )
+        )
+
+    def from_selection(self, selection: WorkflowSelection) -> Workflow:
+        return self.map[selection.workflow]
+
+workflows = Workflows(
+    map={
+        f.name: Workflow(
+            name=f.name,
+            path=f.resolve(),
+        )
+        for f in workflows_dir.iterdir()
+    }
+)
 
 class ModelPricing(BaseModel):
     input: float
@@ -69,7 +114,7 @@ class ModelsData(BaseModel):
     models: dict[str, ModelData]
 
 def _load_models() -> ModelsData:
-    with open(_models_json) as f:
+    with open(models_json) as f:
         return ModelsData.model_validate_json(
             f.read()
         )

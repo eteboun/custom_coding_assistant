@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 from .schemas import Symbol, SymbolKind, ToolSchema, Parameters
 from .utils import (symbol_matches, parse_python_file, _strip_final_newline,
-                    Pather, OutputProtocol, Status, Replacement)
+                    Pather, Replacement)
+from ..utils import OutputProtocol
 
 class Tools:
 
@@ -65,17 +66,17 @@ class Tools:
             )
         except subprocess.TimeoutExpired:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message="Execution timed out",
             )
         except FileNotFoundError:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message="Docker is not installed or not in PATH",
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS if completed.returncode == 0 else Status.ERROR,
+            status="success" if completed.returncode == 0 else "error",
             content={
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
@@ -287,7 +288,7 @@ class Tools:
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content="".join(numbered_lines)
         )
 
@@ -315,7 +316,7 @@ class Tools:
         full_path = resolved_dir.content
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=[
                 e.name
                 for e in full_path.iterdir()
@@ -381,7 +382,7 @@ class Tools:
             content["errors"] = errors
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=content
         )
 
@@ -422,7 +423,7 @@ class Tools:
             tree = parse_python_file(path=full_path)
         except SyntaxError:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Failed to parse Python file: {
                     full_path.relative_to(self.repo_path).as_posix()
                 }"
@@ -437,13 +438,13 @@ class Tools:
 
         if not symbols:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Symbol not found: {notation}"
             )
 
         if len(symbols) > 1:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Multiple symbols found: {notation}"
             )
 
@@ -459,7 +460,7 @@ class Tools:
             return read_result
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content={
                 "notation": symbol_data.notation,
                 "content": read_result.content
@@ -467,25 +468,37 @@ class Tools:
         )
 
     @_tool(
-        description=(
-                "Search repository contents for text or regex matches."
-        ),
+        description="Search repository contents for text or regex matches.",
         parameters=Parameters(
             properties={
                 "query": {
                     "type": "string",
                     "description": "Text or regular expression to search for.",
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Surrounding lines per match.",
+                },
+                "max_output_lines": {
+                    "type": "integer",
+                    "description": "Maximum output lines.",
                 }
             },
             required=["query"],
             additional_properties=False,
-        ),
+        )
     )
-    def search_code(self, query: str) -> OutputProtocol:
+    def search_code(self,
+                    query: str,
+                    context_lines: int = 2,
+                    max_output_lines: int = 100
+                    ) -> OutputProtocol:
         try:
             command = [
                 "rg",
                 "-n",
+                "-C",
+                str(context_lines),
                 query,
                 self.repo_path.as_posix(),
             ]
@@ -505,25 +518,27 @@ class Tools:
             )
         except FileNotFoundError:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message="ripgrep is not installed or not available in PATH"
             )
 
         if process.returncode == 0:
+            findings = process.stdout.splitlines()
+
             return OutputProtocol(
-                status=Status.SUCCESS,
-                content=process.stdout
+                status="success",
+                content="\n".join(findings[:max_output_lines])
             )
 
         elif process.returncode == 1:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message="No match found"
             )
 
         else:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"An error occurred: {process.stderr}"
             )
 
@@ -599,7 +614,7 @@ class Tools:
 
         if not replacements:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message="At least one replacement is required",
             )
 
@@ -659,13 +674,13 @@ class Tools:
 
                 if len(errors_) > 0:
                     return OutputProtocol(
-                        status=Status.ERROR,
+                        status="error",
                         content=errors_,
                         message="Replacements do not match the specified line ranges"
                     )
 
                 return OutputProtocol(
-                    status=Status.SUCCESS,
+                    status="success",
                     content=replacement_objs_
                 )
 
@@ -691,13 +706,13 @@ class Tools:
 
                 if len(errors_) > 0:
                     return OutputProtocol(
-                        status=Status.ERROR,
+                        status="error",
                         content=errors_,
                         message="Replacements do not match the specified line ranges"
                     )
 
                 return OutputProtocol(
-                    status=Status.SUCCESS,
+                    status="success",
                     content=replacement_objs_
                 )
 
@@ -745,7 +760,7 @@ class Tools:
             file.write(text)
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=path,
         )
 
@@ -782,7 +797,7 @@ class Tools:
 
         if full_path.exists():
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"File {full_path} already exists",
             )
 
@@ -790,7 +805,7 @@ class Tools:
         full_path.write_text(content, encoding="utf-8")
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content={
                 "path": path,
             }
@@ -820,7 +835,7 @@ class Tools:
         full_path.unlink()
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=path
         )
 
@@ -849,12 +864,12 @@ class Tools:
             full_path.rmdir()
         except OSError as e:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=str(e),
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=path,
         )
 
@@ -905,7 +920,7 @@ class Tools:
                 files.append(relative_path.as_posix())
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=files,
         )
 
@@ -924,7 +939,7 @@ class ToolCall:
     def execute(self, tools: Tools) -> ToolOutput:
         if self.name not in tools.mapping:
             output = OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Tool {self.name} not found"
             )
         else:

@@ -35,7 +35,7 @@ class Assistant:
             command = query.removeprefix("/")
 
             if command in self.mapping:
-                return self.mapping[command](self)
+                return self.mapping[command](self).strip() + '\n\n'
 
             return f"Command '{command}' not found.\n\n"
 
@@ -75,7 +75,7 @@ class Assistant:
             f"Total tokens: {usage.total_tokens}\n"
             f"Reasoning tokens: {usage.reasoning_tokens}\n"
             f"Cached input tokens: {usage.cached_input_tokens}\n"
-            f"Cache write tokens: {usage.cache_write_tokens}\n\n"
+            f"Cache write tokens: {usage.cache_write_tokens}"
         )
 
     @_command
@@ -86,7 +86,7 @@ class Assistant:
 
         return (
             f"Current model: {self.llm.model_data.id}\n"
-            f"Reasoning: {self.llm.config.reasoning}\n\n"
+            f"Reasoning: {self.llm.config.reasoning}"
         )
 
     @_command
@@ -104,7 +104,7 @@ class Assistant:
 
             text.append('\n'.join(sub_text))
 
-        return '\n\n'.join(text) + '\n\n'
+        return '\n\n'.join(text)
 
     @_command
     def reasoning_levels(self) -> str:
@@ -112,7 +112,16 @@ class Assistant:
         Shows valid reasoning levels.
         """
 
-        return f"Valid reasoning levels: {', '.join(config_reasoning_levels)}.\n\n"
+        return f"Valid reasoning levels: {', '.join(config_reasoning_levels)}."
+
+    @_command
+    def log(self) -> str:
+        """
+        Logs current session state.
+        """
+
+        log_output = self.llm.log()
+        return log_output.message
 
     @_command
     def help(self) -> str:
@@ -127,4 +136,4 @@ class Assistant:
             for command in commands
         ]
 
-        return '\n'.join(descriptions) + '\n\n'
+        return '\n'.join(descriptions)

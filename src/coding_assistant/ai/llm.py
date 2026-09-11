@@ -1,12 +1,13 @@
 from pathlib import Path
-from typing import Generic, TypeVar, override
+from typing import override
+from pydantic import BaseModel
 import json
 
 from abc import ABC, abstractmethod
 
 from openai import OpenAI
 from openai.types.shared_params import Reasoning
-from openai.types.responses import Response
+from openai.types.responses import Response, ParsedResponse
 from openai.types.responses import FunctionToolParam
 
 from google import genai
@@ -16,16 +17,16 @@ from google.genai._gaos.types.interactions import Interaction
 from anthropic import Anthropic
 from anthropic.types import (ToolParam, MessageParam,
                              ThinkingConfigAdaptiveParam, OutputConfigParam,
-                             Message, ToolResultBlockParam)
+                             Message, ToolResultBlockParam, ParsedMessage)
 
-from .schemas import models_data, ModelData, ProviderId, TokenUsage
-from .logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
+from .schemas import (models_data, workflows, WorkflowSelection,
+                      ModelData, ProviderId, TokenUsage, Workflow)
+from .logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, LLMWorkflowSelectionLog, ToolCallLog
 from .config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
+from ..utils import OutputProtocol
 
-ClientT = TypeVar("ClientT")
-
-class BaseLLM(ABC, Generic[ClientT]):
+class BaseLLM[ClientT](ABC):
     def __init__(
             self,
             instructions: str,
@@ -47,6 +48,8 @@ class BaseLLM(ABC, Generic[ClientT]):
             blocked_files=config.blocked_files,
             blocked_dirs=config.blocked_dirs
         )
+
+        self.workflows = workflows
 
         self.logger = Logger(
             log_path=config.log_path
@@ -92,6 +95,14 @@ class BaseLLM(ABC, Generic[ClientT]):
         return model_data
 
     @abstractmethod
+    def extract_workflow[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T]
+    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
+        ...
+
+    @abstractmethod
     def usage(self, response) -> TokenUsage:
         ...
 
@@ -112,21 +123,45 @@ class BaseLLM(ABC, Generic[ClientT]):
         ...
 
     @abstractmethod
-    def initial_call(self, query: str):
+    def initial_call(self, query: str, instructions: str):
         ...
 
     @abstractmethod
-    def next_call(self, response, outputs):
+    def next_call(self, response, outputs, instructions: str):
         ...
 
-    def log(self) -> None:
-        self.logger.log()
+    def build_instructions(self, workflow: Workflow) -> str:
+        return f"""
+        {self.instructions}
+        
+        {workflow.content}
+        """
+
+    def log(self) -> OutputProtocol:
+        return self.logger.log()
 
     def run(self, query: str) -> str:
         query_log = QueryLog(query=query)
 
         try:
-            response = self.initial_call(query)
+            workflow, selection, usage = self.extract_workflow(
+                inputs=query,
+                response_format=WorkflowSelection
+            )
+
+            query_log.add_llm_call(LLMWorkflowSelectionLog(
+                usage=usage,
+                selection=selection
+            ))
+
+            instructions = self.build_instructions(
+                workflow=workflow
+            )
+
+            response = self.initial_call(
+                query=query,
+                instructions=instructions
+            )
 
             for i in range(self.config.max_iters):
                 tool_calls = self.tool_call_contract(response)
@@ -169,7 +204,8 @@ class BaseLLM(ABC, Generic[ClientT]):
 
                 response = self.next_call(
                     response=response,
-                    outputs=outputs
+                    outputs=outputs,
+                    instructions=instructions
                 )
 
         finally:
@@ -182,7 +218,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config,
+            config: Config
     ):
         super().__init__(
             instructions=instructions,
@@ -193,9 +229,10 @@ class OpenAILLM(BaseLLM[OpenAI]):
         )
 
     def _generate(
-        self,
-        inputs,
-        prev_id: str | None = None,
+            self,
+            inputs,
+            instructions: str,
+            prev_id: str | None = None
     ) -> Response:
         kwargs = {}
 
@@ -209,11 +246,43 @@ class OpenAILLM(BaseLLM[OpenAI]):
 
         return self.client.responses.create(
             model=self.model_data.id,
-            instructions=self.instructions,
+            instructions=instructions,
             input=inputs,
             tools=self.tool_contract(),
-            **kwargs,
+            **kwargs
         )
+
+    def _parse[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T],
+            instructions: str
+    ) -> ParsedResponse:
+        return self.client.responses.parse(
+            model=self.model_data.id,
+            instructions=instructions,
+            input=inputs,
+            text_format=response_format
+        )
+
+    @override
+    def extract_workflow[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T]
+    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
+
+        response = self._parse(
+            inputs=inputs,
+            response_format=response_format,
+            instructions=self.workflows.instructions
+        )
+
+        selection = response.output_parsed
+
+        return self.workflows.from_selection(
+            selection=selection
+        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Response) -> TokenUsage:
@@ -270,21 +339,26 @@ class OpenAILLM(BaseLLM[OpenAI]):
         ]
 
     @override
-    def initial_call(self, query: str) -> Response:
-        return self._generate(query)
+    def initial_call(self, query: str, instructions: str) -> Response:
+        return self._generate(
+            inputs=query,
+            instructions=instructions
+        )
 
     @override
     def next_call(
             self,
             outputs: list[ToolOutput],
             response: Response,
+            instructions: str
     ) -> Response:
         return self._generate(
             inputs=[
                 self.tool_output_contract(output)
                 for output in outputs
             ],
-            prev_id=response.id
+            prev_id=response.id,
+            instructions=instructions
         )
 
 class GeminiLLM(BaseLLM[genai.Client]):
@@ -305,6 +379,7 @@ class GeminiLLM(BaseLLM[genai.Client]):
     def _generate(
             self,
             inputs,
+            instructions: str,
             prev_id: str | None = None,
     ) -> Interaction:
         generation_config = {}
@@ -315,7 +390,7 @@ class GeminiLLM(BaseLLM[genai.Client]):
         return self.client.interactions.create(
             model=self.model_data.id,
             input=inputs,
-            system_instruction=self.instructions,
+            system_instruction=instructions,
             tools=self.tool_contract(),
             generation_config=generation_config,
             **(
@@ -324,6 +399,43 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 else {}
             ),
         )
+
+    def _parse[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T],
+            instructions: str
+    ) -> Interaction:
+        return self.client.interactions.create(
+            model=self.model_data.id,
+            input=inputs,
+            system_instruction=instructions,
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": response_format.model_json_schema(),
+            },
+        )
+
+    @override
+    def extract_workflow[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T]
+    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
+        response = self._parse(
+            inputs=inputs,
+            response_format=response_format,
+            instructions=self.workflows.instructions
+        )
+
+        selection = WorkflowSelection.model_validate_json(
+            response.output_text
+        )
+
+        return self.workflows.from_selection(
+            selection=selection
+        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Interaction) -> TokenUsage:
@@ -393,21 +505,23 @@ class GeminiLLM(BaseLLM[genai.Client]):
         ]
 
     @override
-    def initial_call(self, query: str) -> Interaction:
-        return self._generate(query)
+    def initial_call(self, query: str, instructions: str) -> Interaction:
+        return self._generate(inputs=query, instructions=instructions)
 
     @override
     def next_call(
             self,
             outputs: list[ToolOutput],
             response: Interaction,
+            instructions: str
     ) -> Interaction:
         return self._generate(
             inputs=[
                 self.tool_output_contract(output)
                 for output in outputs
             ],
-            prev_id=response.id
+            prev_id=response.id,
+            instructions=instructions
         )
 
 class AnthropicLLM(BaseLLM[Anthropic]):
@@ -430,6 +544,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
     def _generate(
             self,
             inputs: list[MessageParam],
+            instructions: str,
     ) -> Message:
         kwargs = {}
 
@@ -441,7 +556,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         return self.client.messages.create(
             model=self.model_data.id,
             max_tokens=self.model_data.max_output_tokens,
-            system=self.instructions,
+            system=instructions,
             tools=self.tool_contract(),
             messages=inputs,
             thinking=ThinkingConfigAdaptiveParam(
@@ -449,6 +564,42 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             ),
             **kwargs
         )
+
+    def _parse[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T],
+            instructions: str,
+    ) -> ParsedMessage[T]:
+        messages: list[MessageParam] = [
+            {"role": "user", "content": inputs}
+        ]
+
+        return self.client.messages.parse(
+            model=self.model_data.id,
+            max_tokens=100,
+            system=instructions,
+            messages=messages,
+            output_format=response_format,
+        )
+
+    @override
+    def extract_workflow[T: BaseModel](
+            self,
+            inputs,
+            response_format: type[T]
+    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
+        response = self._parse(
+            inputs=inputs,
+            response_format=response_format,
+            instructions=self.workflows.instructions
+        )
+
+        selection: WorkflowSelection = response.parsed_output
+
+        return self.workflows.from_selection(
+            selection=selection
+        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Message) -> TokenUsage:
@@ -511,20 +662,21 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         ]
 
     @override
-    def initial_call(self, query: str) -> Message:
+    def initial_call(self, query: str, instructions: str) -> Message:
         message: MessageParam = {
                 "role": "user",
                 "content": query,
             }
 
         self.messages.append(message)
-        return self._generate([message])
+        return self._generate([message], instructions=instructions)
 
     @override
     def next_call(
             self,
             outputs: list[ToolOutput],
-            response: Message
+            response: Message,
+            instructions: str
     ) -> Message:
         self.messages.append({
             "role": "assistant",
@@ -539,7 +691,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             ],
         })
 
-        return self._generate(self.messages)
+        return self._generate(self.messages, instructions=instructions)
 
 def create_llm(
         instructions: str,

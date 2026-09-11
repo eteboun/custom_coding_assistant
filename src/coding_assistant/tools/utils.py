@@ -1,11 +1,8 @@
 import ast
 from pathlib import Path
-from typing import Any, override
-from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
-from enum import StrEnum
 
-from ..utils import Serializable
+from ..utils import OutputProtocol
 
 class Replacement(BaseModel):
 
@@ -15,46 +12,6 @@ class Replacement(BaseModel):
     new_text: str
     start_line: int = Field(ge=1)
     end_line: int = Field(ge=1)
-
-class Status(StrEnum):
-
-    SUCCESS = "success"
-    ERROR = "error"
-
-@dataclass
-class OutputProtocol(Serializable):
-
-    status: Status
-    content: Any = None
-    message: str | None = None
-
-    def __post_init__(self):
-        if self.status == Status.SUCCESS and self.content is None:
-            raise ValueError("Successful output must contain content")
-
-        if self.status == Status.ERROR and self.message is None:
-            raise ValueError("Error output must contain a message")
-
-    @override
-    def serialize(self) -> dict:
-        serialized: dict[str, Any] = {
-            "status": self.status.value
-        }
-
-        if self.content is not None:
-            if isinstance(self.content, Serializable):
-                serialized["content"] = self.content.serialize()
-
-            else:
-                serialized["content"] = self.content
-
-        if self.message is not None:
-            serialized["message"] = self.message
-
-        return serialized
-
-    def is_fail(self) -> bool:
-        return self.status == Status.ERROR
 
 class Pather:
 
@@ -76,13 +33,13 @@ class Pather:
 
         if not full_path.is_relative_to(self.repo_path):
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message= "Access outside the repository is denied"
             )
 
         if full_path.name in self.blocked_files:
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Path '{full_path}' is blocked"
             )
 
@@ -90,12 +47,12 @@ class Pather:
 
         if any(part in self.blocked_dirs for part in relative_parts):
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Path '{full_path}' is blocked"
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=full_path
         )
 
@@ -115,18 +72,18 @@ class Pather:
 
         if not full_path.exists():
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"Directory {path} does not exist",
             )
 
         if not full_path.is_dir():
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"{path} is not a directory"
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=full_path,
         )
 
@@ -145,18 +102,18 @@ class Pather:
 
         if not full_path.exists():
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"File {path} does not exist",
             )
 
         if not full_path.is_file():
             return OutputProtocol(
-                status=Status.ERROR,
+                status="error",
                 message=f"{path} is not a file",
             )
 
         return OutputProtocol(
-            status=Status.SUCCESS,
+            status="success",
             content=full_path,
         )
 

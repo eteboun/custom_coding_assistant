@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Self, override
 
-from .utils import Serializable
+from ..utils import Serializable
 
 class SymbolKind(StrEnum):
     METHOD = "method"

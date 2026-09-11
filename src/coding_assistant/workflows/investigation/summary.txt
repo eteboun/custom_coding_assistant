@@ -1,0 +1,1 @@
+Investigate and explain existing code or behavior using minimal, targeted inspection without making changes.
