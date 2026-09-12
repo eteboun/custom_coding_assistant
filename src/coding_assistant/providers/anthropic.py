@@ -41,7 +41,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                         effort=self.config.reasoning
                     )
 
-        return self.client.messages.create(
+        with self.client.messages.stream(
             model=self.model_data.id,
             max_tokens=self.model_data.max_output_tokens,
             system=instructions,
@@ -51,7 +51,8 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                 type="adaptive"
             ),
             **kwargs
-        )
+        ) as stream:
+            return stream.get_final_message()
 
     @override
     def usage(self, response: Message) -> TokenUsage:

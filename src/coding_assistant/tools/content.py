@@ -192,22 +192,6 @@ class Tools:
 
         return symbols
 
-    def _tool_mapping(self) -> dict[str, Callable]:
-
-        return {
-            func.__name__: func
-            for _, func in inspect.getmembers(self, predicate=inspect.ismethod)
-            if getattr(func, "is_tool", False)
-        }
-
-    def _tool_datas(self) -> list[ToolSchema]:
-
-        return [
-            func.tool_data
-            for _, func in inspect.getmembers(self, predicate=inspect.ismethod)
-            if getattr(func, "is_tool", False)
-        ]
-
     @staticmethod
     def _tool(
             description: str,
@@ -230,6 +214,35 @@ class Tools:
             return func
 
         return decorator
+
+    def _tools(self):
+        funcs = []
+
+        for _, func in inspect.getmembers(self, predicate=inspect.ismethod):
+            if getattr(func, "is_tool", False):
+                funcs.append(func)
+
+        return funcs
+
+    def _tool_mapping(self) -> dict[str, Callable]:
+        tools = self._tools()
+        return {
+            tool.__name__: tool
+            for tool in tools
+        }
+
+    def _tool_datas(self) -> list[ToolSchema]:
+        tools = self._tools()
+        return [
+            tool.tool_data
+            for tool in tools
+        ]
+
+    def tools(self) -> list[str]:
+        return [
+            tool.__name__
+            for tool in self._tools()
+        ]
 
     @_tool(
         description=(

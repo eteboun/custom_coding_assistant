@@ -116,6 +116,19 @@ class Assistant:
         return f"Valid reasoning levels: {', '.join(config_reasoning_levels)}."
 
     @_command
+    def tools(self) -> str:
+        """
+        Shows available tools.
+        """
+
+        tools = '\n'.join(map(
+            lambda t: '- ' + t,
+            self.llm.tools.tools()
+        ))
+
+        return f"Available tools:\n{tools}"
+
+    @_command
     def log(self) -> str:
         """
         Logs current session state.

@@ -7,13 +7,13 @@ from ..utils import OutputProtocol
 
 Operation = Literal["update", "add", "delete"]
 
-@dataclass
+@dataclass(frozen=True)
 class FilePatch:
     operation: Operation
     path: str
     lines: list[str]
 
-@dataclass
+@dataclass(frozen=True)
 class Hunk:
     start: int
     end: int
@@ -177,12 +177,3 @@ def symbol_matches(
             and search_notation == name
         )
     )
-
-def _strip_final_newline(text: str) -> str:
-    if text.endswith("\r\n"):
-        return text[:-2]
-
-    if text.endswith("\n"):
-        return text[:-1]
-
-    return text

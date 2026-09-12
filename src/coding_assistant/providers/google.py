@@ -3,7 +3,6 @@ from typing import override
 import json
 
 from google import genai
-from google.genai import types
 from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
@@ -32,22 +31,22 @@ class GeminiLLM(BaseLLM[genai.Client]):
             instructions: str,
             prev_id: str | None = None,
     ) -> Interaction:
-        generation_config = {}
+        kwargs = {}
 
         if self.config.reasoning is not None:
-            generation_config["thinking_level"] = self.config.reasoning
+            kwargs["generation_config"] = {
+                "thinking_level": self.config.reasoning
+            }
+
+        if prev_id is not None:
+            kwargs["previous_interaction_id"] = prev_id
 
         return self.client.interactions.create(
             model=self.model_data.id,
             input=inputs,
             system_instruction=instructions,
             tools=self.tool_contract(),
-            generation_config=generation_config,
-            **(
-                {"previous_interaction_id": prev_id}
-                if prev_id is not None
-                else {}
-            ),
+            **kwargs
         )
 
     @override
@@ -95,26 +94,25 @@ class GeminiLLM(BaseLLM[genai.Client]):
                     "type": "text",
                     "text": json.dumps(
                         tool_output.output.serialize()
-                    ),
+                    )
                 }
-            ],
+            ]
         }
 
     @override
-    def tool_contract(self) -> list[types.Tool]:
-        declarations = [
-            types.FunctionDeclaration(
-                name=tool.name,
-                description=tool.description,
-                parameters=tool.parameters.serialize(),
-            )
-            for tool in self.tools.datas
-        ]
-
+    def tool_contract(self) -> list[dict]:
         return [
-            types.Tool(
-                function_declarations=declarations
-            )
+            {
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": (
+                    tool.parameters
+                    .serialize()
+                    .pop("additionalProperties")
+                )
+            }
+            for tool in self.tools.datas
         ]
 
     @override

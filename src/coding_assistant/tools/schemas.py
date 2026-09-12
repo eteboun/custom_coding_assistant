@@ -35,10 +35,12 @@ class Parameters(Serializable):
     required: list[str]
     additional_properties: bool
 
+    type: str = "object"
+
     @override
     def serialize(self) -> dict:
         return {
-            "type": "object",
+            "type": self.type,
             "properties": self.properties,
             "required": self.required,
             "additionalProperties": self.additional_properties

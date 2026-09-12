@@ -10,9 +10,8 @@ class Serializable(ABC):
 
 Status = Literal["error", "success"]
 
-@dataclass
+@dataclass(frozen=True)
 class OutputProtocol(Serializable):
-
     status: Status
     content: Any = None
     message: str | None = None
