@@ -9,7 +9,7 @@ from openai.types.responses import Response, ParsedResponse
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
-from ..ai.schemas import WorkflowSelection, TokenUsage, Workflow
+from ..ai.schemas import TokenUsage
 from ..ai.config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -17,13 +17,11 @@ class OpenAILLM(BaseLLM[OpenAI]):
     def __init__(
             self,
             instructions: str,
-            workflow_instructions: str,
             repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            workflow_instructions=workflow_instructions,
             repo_path=repo_path,
             config=config,
             provider="openai",
@@ -66,25 +64,6 @@ class OpenAILLM(BaseLLM[OpenAI]):
             input=inputs,
             text_format=response_format
         )
-
-    @override
-    def extract_workflow[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T]
-    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
-
-        response = self._parse(
-            inputs=inputs,
-            response_format=response_format,
-            instructions=self.workflows.instructions
-        )
-
-        selection = response.output_parsed
-
-        return self.workflows.from_selection(
-            selection=selection
-        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Response) -> TokenUsage:

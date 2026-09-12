@@ -9,7 +9,7 @@ from anthropic.types import (ToolParam, MessageParam,
                              Message, ToolResultBlockParam, ParsedMessage)
 
 from .base import BaseLLM
-from ..ai.schemas import WorkflowSelection, TokenUsage, Workflow
+from ..ai.schemas import TokenUsage
 from ..ai.config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -17,13 +17,11 @@ class AnthropicLLM(BaseLLM[Anthropic]):
     def __init__(
             self,
             instructions: str,
-            workflow_instructions: str,
             repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            workflow_instructions=workflow_instructions,
             repo_path=repo_path,
             config=config,
             provider="anthropic",
@@ -73,24 +71,6 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             messages=messages,
             output_format=response_format,
         )
-
-    @override
-    def extract_workflow[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T]
-    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
-        response = self._parse(
-            inputs=inputs,
-            response_format=response_format,
-            instructions=self.workflows.instructions
-        )
-
-        selection: WorkflowSelection = response.parsed_output
-
-        return self.workflows.from_selection(
-            selection=selection
-        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Message) -> TokenUsage:

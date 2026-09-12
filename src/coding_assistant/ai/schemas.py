@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 from typing import Literal, Any
-from pathlib import Path
-from dataclasses import dataclass, field
 
 from ..utils import Serializable
-from .config import models_json, workflows_dir
+from .config import models_json
 
 ProviderId = Literal[
     "openai",
@@ -23,53 +21,6 @@ ReasoningLevel = Literal[
     "xhigh",
     "max",
 ]
-
-@dataclass
-class Workflow:
-    path: Path
-    name: str
-
-    @property
-    def content(self):
-        return (self.path / f"{self.name}.md").read_text()
-
-    @property
-    def summary(self):
-        return (self.path / "summary.txt").read_text()
-
-class WorkflowSelection(BaseModel):
-    workflow: Literal[
-        "documentation",
-        "build",
-        "bug_fix",
-        "new_feature",
-        "investigation"
-    ]
-
-@dataclass
-class Workflows:
-    instructions: str
-
-    map: dict[str, Workflow] = field(
-        default_factory=lambda: {
-            f.name: Workflow(
-                name=f.name,
-                path=f.resolve(),
-            )
-            for f in workflows_dir.iterdir()
-        }
-    )
-
-    def __post_init__(self):
-        self.instructions = self.instructions.format(
-            available_workflows="\n".join(
-                f"- {workflow.name}: {workflow.summary}"
-                for workflow in self.map.values()
-            )
-        )
-
-    def from_selection(self, selection: WorkflowSelection) -> Workflow:
-        return self.map[selection.workflow]
 
 class ModelPricing(BaseModel):
     input: float

@@ -5,7 +5,7 @@ import json
 
 from ..utils import Serializable
 from ..utils import OutputProtocol
-from .schemas import TokenUsage, WorkflowSelection
+from .schemas import TokenUsage
 
 @dataclass
 class ToolCallLog(Serializable):
@@ -31,16 +31,6 @@ class LLMCallLog(Serializable):
 
     def serialize(self) -> dict:
         return self.usage.serialize()
-
-@dataclass
-class LLMWorkflowSelectionLog(LLMCallLog):
-    selection: WorkflowSelection
-
-    def serialize(self) -> dict:
-        return {
-            "usage": super().serialize(),
-            "workflow": self.selection.workflow
-        }
 
 @dataclass
 class LLMToolCallLog(LLMCallLog):

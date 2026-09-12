@@ -11,13 +11,11 @@ class Assistant:
     def __init__(
             self,
             instructions: str,
-            workflow_instructions: str,
             repo_path: Path,
             config: Config
     ) -> None:
         self.llm = create_llm(
             instructions=instructions,
-            workflow_instructions=workflow_instructions,
             repo_path=repo_path,
             config=config
         )
@@ -125,19 +123,6 @@ class Assistant:
 
         log_output = self.llm.log()
         return log_output.message
-
-    @_command
-    def workflows(self) -> str:
-        """
-        Shows available workflows.
-        """
-
-        workflows = self.llm.workflows.map.keys()
-        return (f"Available workflows:\n"
-                f"{'\n'.join(map(
-                    lambda wf: '- ' + wf,
-                    workflows
-                ))}")
 
     @_command
     def help(self) -> str:

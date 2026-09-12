@@ -9,10 +9,6 @@ instructions = (
     _BASE_DIR / "instructions.md"
 ).read_text()
 
-workflow_instructions = (
-    _BASE_DIR / "workflow_instructions.md"
-).read_text()
-
 config_filename = "assistant.json"
 _config_reasoning_levels = Literal[
                     "low", "medium", "high"
@@ -21,7 +17,6 @@ _config_reasoning_levels = Literal[
 config_reasoning_levels = get_args(_config_reasoning_levels)
 
 models_json = _BASE_DIR.parent / "llm_data" / "models.json"
-workflows_dir = _BASE_DIR.parent / "workflows"
 
 class Config(BaseModel):
 

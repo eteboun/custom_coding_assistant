@@ -8,7 +8,7 @@ from google.genai import types
 from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
-from ..ai.schemas import WorkflowSelection, TokenUsage, Workflow
+from ..ai.schemas import TokenUsage
 from ..ai.config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -16,13 +16,11 @@ class GeminiLLM(BaseLLM[genai.Client]):
     def __init__(
             self,
             instructions: str,
-            workflow_instructions: str,
             repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            workflow_instructions=workflow_instructions,
             repo_path=repo_path,
             config=config,
             provider="google",
@@ -69,26 +67,6 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 "schema": response_format.model_json_schema(),
             },
         )
-
-    @override
-    def extract_workflow[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T]
-    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
-        response = self._parse(
-            inputs=inputs,
-            response_format=response_format,
-            instructions=self.workflows.instructions
-        )
-
-        selection = WorkflowSelection.model_validate_json(
-            response.output_text
-        )
-
-        return self.workflows.from_selection(
-            selection=selection
-        ), selection, self.usage(response=response)
 
     @override
     def usage(self, response: Interaction) -> TokenUsage:

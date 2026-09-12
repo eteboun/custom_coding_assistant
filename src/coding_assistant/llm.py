@@ -10,7 +10,6 @@ from .providers.anthropic import AnthropicLLM
 
 def create_llm(
         instructions: str,
-        workflow_instructions,
         repo_path: Path,
         config: Config
 ) -> BaseLLM:
@@ -25,7 +24,6 @@ def create_llm(
         case "openai":
             return OpenAILLM(
                 instructions=instructions,
-                workflow_instructions=workflow_instructions,
                 repo_path=repo_path,
                 config=config
             )
@@ -33,7 +31,6 @@ def create_llm(
         case "google":
             return GeminiLLM(
                 instructions=instructions,
-                workflow_instructions=workflow_instructions,
                 repo_path=repo_path,
                 config=config
             )
@@ -41,7 +38,6 @@ def create_llm(
         case "anthropic":
             return AnthropicLLM(
                 instructions=instructions,
-                workflow_instructions=workflow_instructions,
                 repo_path=repo_path,
                 config=config
             )

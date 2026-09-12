@@ -1,11 +1,8 @@
 from pathlib import Path
-from pydantic import BaseModel
-
 from abc import ABC, abstractmethod
 
-from ..ai.schemas import (models_data, Workflows, WorkflowSelection,
-                                         ModelData, ProviderId, TokenUsage, Workflow)
-from ..ai.logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, LLMWorkflowSelectionLog, ToolCallLog
+from ..ai.schemas import (models_data, ModelData, ProviderId, TokenUsage,)
+from ..ai.logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
 from ..ai.config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
 from ..utils import OutputProtocol
@@ -14,7 +11,6 @@ class BaseLLM[ClientT](ABC):
     def __init__(
             self,
             instructions: str,
-            workflow_instructions: str,
             repo_path: Path,
             config: Config,
             client: ClientT,
@@ -32,10 +28,6 @@ class BaseLLM[ClientT](ABC):
             repo_path=repo_path,
             blocked_files=config.blocked_files,
             blocked_dirs=config.blocked_dirs
-        )
-
-        self.workflows = Workflows(
-            instructions=workflow_instructions
         )
 
         self.logger = Logger(
@@ -82,14 +74,6 @@ class BaseLLM[ClientT](ABC):
         return model_data
 
     @abstractmethod
-    def extract_workflow[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T]
-    ) -> tuple[Workflow, WorkflowSelection, TokenUsage]:
-        ...
-
-    @abstractmethod
     def usage(self, response) -> TokenUsage:
         ...
 
@@ -117,13 +101,6 @@ class BaseLLM[ClientT](ABC):
     def next_call(self, response, outputs, instructions: str):
         ...
 
-    def build_instructions(self, workflow: Workflow) -> str:
-        return f"""
-        {self.instructions}
-
-        {workflow.content}
-        """
-
     def log(self) -> OutputProtocol:
         return self.logger.log()
 
@@ -131,23 +108,9 @@ class BaseLLM[ClientT](ABC):
         query_log = QueryLog(query=query)
 
         try:
-            workflow, selection, usage = self.extract_workflow(
-                inputs=query,
-                response_format=WorkflowSelection
-            )
-
-            query_log.add_llm_call(LLMWorkflowSelectionLog(
-                usage=usage,
-                selection=selection
-            ))
-
-            instructions = self.build_instructions(
-                workflow=workflow
-            )
-
             response = self.initial_call(
                 query=query,
-                instructions=instructions
+                instructions=self.instructions
             )
 
             for i in range(self.config.max_iters):
@@ -192,7 +155,7 @@ class BaseLLM[ClientT](ABC):
                 response = self.next_call(
                     response=response,
                     outputs=outputs,
-                    instructions=instructions
+                    instructions=self.instructions
                 )
 
         finally:
