@@ -1,12 +1,11 @@
 from pathlib import Path
 from typing import override
-from pydantic import BaseModel
 import json
 
 from anthropic import Anthropic
 from anthropic.types import (ToolParam, MessageParam,
                              ThinkingConfigAdaptiveParam, OutputConfigParam,
-                             Message, ToolResultBlockParam, ParsedMessage)
+                             Message, ToolResultBlockParam)
 
 from .base import BaseLLM
 from ..ai.schemas import TokenUsage
@@ -52,24 +51,6 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                 type="adaptive"
             ),
             **kwargs
-        )
-
-    def _parse[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T],
-            instructions: str,
-    ) -> ParsedMessage[T]:
-        messages: list[MessageParam] = [
-            {"role": "user", "content": inputs}
-        ]
-
-        return self.client.messages.parse(
-            model=self.model_data.id,
-            max_tokens=100,
-            system=instructions,
-            messages=messages,
-            output_format=response_format,
         )
 
     @override

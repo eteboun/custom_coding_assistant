@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import override
-from pydantic import BaseModel
 import json
 
 from google import genai
@@ -49,23 +48,6 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 if prev_id is not None
                 else {}
             ),
-        )
-
-    def _parse[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T],
-            instructions: str
-    ) -> Interaction:
-        return self.client.interactions.create(
-            model=self.model_data.id,
-            input=inputs,
-            system_instruction=instructions,
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": response_format.model_json_schema(),
-            },
         )
 
     @override

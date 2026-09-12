@@ -1,11 +1,10 @@
 from pathlib import Path
 from typing import override
-from pydantic import BaseModel
 import json
 
 from openai import OpenAI
 from openai.types.shared_params import Reasoning
-from openai.types.responses import Response, ParsedResponse
+from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
@@ -50,19 +49,6 @@ class OpenAILLM(BaseLLM[OpenAI]):
             input=inputs,
             tools=self.tool_contract(),
             **kwargs
-        )
-
-    def _parse[T: BaseModel](
-            self,
-            inputs,
-            response_format: type[T],
-            instructions: str
-    ) -> ParsedResponse:
-        return self.client.responses.parse(
-            model=self.model_data.id,
-            instructions=instructions,
-            input=inputs,
-            text_format=response_format
         )
 
     @override
