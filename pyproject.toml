@@ -25,7 +25,5 @@ where = ["src"]
 coding_agent = [
     "ai/instructions.md",
     "ai/workflow_instructions.md",
-    "llm_data/*.json",
-    "workflows/**/*.md",
-    "workflows/**/*.txt"
+    "llm_data/*.json"
 ]
