@@ -7,8 +7,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from .schemas import Symbol, SymbolKind, ToolSchema, Parameters
-from .utils import (symbol_matches, parse_python_file, _strip_final_newline,
-                    Pather, Replacement)
+from .utils import symbol_matches, parse_python_file, FilePatch, Hunk, Pather
 from ..utils import OutputProtocol
 
 class Tools:
@@ -544,300 +543,355 @@ class Tools:
 
     @_tool(
         description=(
-                "Replace one or more exact line ranges in a single existing file. "
-                "All ranges are inclusive, 1-based, and refer to the original file state. "
-                "old_text must exactly match the selected range, and ranges must not overlap. "
-                "Use the smallest line range that contains the required change. "
-                "Do not include unchanged surrounding lines. "
-                "Batch independent edits to the same file into one call."
+                "Apply a Codex-style patch containing one or more file operations. "
+                "Supported file operations are only: "
+                "'*** Update File: <path>', "
+                "'*** Add File: <path>', and "
+                "'*** Delete File: <path>'. "
+                "The patch must start with '*** Begin Patch' and end with '*** End Patch'. "
+                "Update File operations may contain one or more hunks separated by '@@'. "
+                "Within update hunks, lines prefixed with ' ' are unchanged context, "
+                "'-' lines are removed, and '+' lines are added. "
+                "Update hunks are matched against the original file state, must match exactly once, "
+                "and must not overlap. "
+                "Use only enough unchanged context to identify each target uniquely. "
+                "Add File content must consist only of '+' prefixed lines. "
+                "Delete File operations must not contain file content. "
+                "Unsupported operations or metadata must not be used."
         ),
         parameters=Parameters(
             properties={
-                "path": {
+                "patch": {
                     "type": "string",
                     "description": (
-                            "Repository-relative path of the existing file to modify."
+                            "Complete patch in Codex-style format. "
+                            "Supported structure:\n"
+                            "*** Begin Patch\n"
+                            "*** Update File: <path>\n"
+                            "@@\n"
+                            " <unchanged context>\n"
+                            "-<removed line>\n"
+                            "+<added line>\n"
+                            "@@\n"
+                            " <another hunk>\n"
+                            "*** Add File: <path>\n"
+                            "+<new file content>\n"
+                            "*** Delete File: <path>\n"
+                            "*** End Patch\n"
+                            "Supported Update File hunks are '@@'-separated contiguous edit regions "
+                            "using only ' ', '-', and '+' line prefixes."
                     ),
-                },
-                "replacements": {
-                    "type": "array",
-                    "description": (
-                            "List of replacements to apply. "
-                            "Each replacement selects an inclusive 1-based line range."
-                    ),
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "start_line": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "description": "First line of the range.",
-                            },
-                            "end_line": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "description": "Last line of the range, inclusive.",
-                            },
-                            "old_text": {
-                                "type": "string",
-                                "description": (
-                                        "Exact content of the selected line range."
-                                ),
-                            },
-                            "new_text": {
-                                "type": "string",
-                                "description": (
-                                        "Content that replaces the selected line range."
-                                ),
-                            },
-                        },
-                        "required": [
-                            "start_line",
-                            "end_line",
-                            "old_text",
-                            "new_text",
-                        ],
-                        "additionalProperties": False,
-                    },
                 },
             },
-            required=["path", "replacements"],
+            required=["patch"],
             additional_properties=False,
         ),
-        strict=True
+        strict=True,
     )
-    def replace_in_file(
-        self,
-        path: str,
-        replacements: list[dict]
+    def apply_patch(
+            self,
+            patch: str,
     ) -> OutputProtocol:
+        patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
-        if not replacements:
+        try:
+            file_patches = self._parse_patch(patch)
+        except ValueError as e:
             return OutputProtocol(
                 status="error",
-                message="At least one replacement is required",
+                message=str(e),
             )
 
-        resolved_file = self.pather.resolve_file(path=path)
+        pending_writes: dict[Path, str] = {}
+        pending_deletes: set[Path] = set()
 
-        if resolved_file.is_fail():
-            return resolved_file
+        for file_patch in file_patches:
+            if file_patch.operation == "update":
+                resolved = self.pather.resolve_file(file_patch.path)
 
-        full_path = resolved_file.content
-        with open(full_path, "r", encoding="utf-8") as file:
-            lines = file.readlines()
+                if resolved.is_fail():
+                    return resolved
 
-        line_offsets = [0]
+                full_path = resolved.content
+
+                with open(full_path, "r", encoding="utf-8", newline="") as f:
+                    initial_content = f.read()
+
+                try:
+                    new_content = self._apply_update(
+                        initial_content,
+                        file_patch.lines,
+                    )
+                except ValueError as e:
+                    return OutputProtocol(
+                        status="error",
+                        message=f"{file_patch.path}: {e}",
+                    )
+
+                pending_writes[full_path] = new_content
+
+            elif file_patch.operation == "delete":
+                resolved = self.pather.resolve_file(file_patch.path)
+
+                if resolved.is_fail():
+                    return resolved
+
+                full_path = resolved.content
+
+                if file_patch.lines:
+                    return OutputProtocol(
+                        status="error",
+                        message=(
+                            f"{file_patch.path}: Delete File "
+                            "must not contain patch content."
+                        ),
+                    )
+
+                pending_deletes.add(full_path)
+
+            elif file_patch.operation == "add":
+                resolved = self.pather.resolve_path(file_patch.path)
+
+                if resolved.is_fail():
+                    return resolved
+
+                full_path = resolved.content
+
+                if full_path.exists():
+                    return OutputProtocol(
+                        status="error",
+                        message=f"{file_patch.path}: File already exists.",
+                    )
+
+                try:
+                    new_content = self._parse_added_file(
+                        file_patch.lines
+                    )
+                except ValueError as e:
+                    return OutputProtocol(
+                        status="error",
+                        message=f"{file_patch.path}: {e}",
+                    )
+
+                pending_writes[full_path] = new_content
+
+        if pending_deletes & pending_writes.keys():
+            return OutputProtocol(
+                status="error",
+                message="A file cannot be both written and deleted.",
+            )
+
+        for path in pending_deletes:
+            path.unlink()
+
+        for path, content in pending_writes.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(
+                    path,
+                    "w",
+                    encoding="utf-8",
+                    newline="",
+            ) as f:
+                f.write(content)
+
+        return OutputProtocol(
+            status="success",
+            content="Successfully applied patch.",
+        )
+
+    @staticmethod
+    def _parse_patch(patch: str) -> list[FilePatch]:
+        lines = patch.split("\n")
+
+        if not lines or lines[0] != "*** Begin Patch":
+            raise ValueError("Patch must start with '*** Begin Patch'.")
+
+        if lines[-1] != "*** End Patch":
+            raise ValueError("Patch must end with '*** End Patch'.")
+
+        result: list[FilePatch] = []
+        current: FilePatch | None = None
+
+        for line in lines[1:-1]:
+            if line.startswith("*** Update File: "):
+                if current is not None:
+                    result.append(current)
+
+                current = FilePatch(
+                    operation="update",
+                    path=line.removeprefix("*** Update File: ").strip(),
+                    lines=[],
+                )
+
+            elif line.startswith("*** Add File: "):
+                if current is not None:
+                    result.append(current)
+
+                current = FilePatch(
+                    operation="add",
+                    path=line.removeprefix("*** Add File: ").strip(),
+                    lines=[],
+                )
+
+            elif line.startswith("*** Delete File: "):
+                if current is not None:
+                    result.append(current)
+
+                current = FilePatch(
+                    operation="delete",
+                    path=line.removeprefix("*** Delete File: ").strip(),
+                    lines=[],
+                )
+
+            elif line.startswith("*** "):
+                raise ValueError(
+                    f"Unsupported patch metadata: {line}"
+                )
+
+            else:
+                if current is None:
+                    if not line:
+                        continue
+
+                    raise ValueError(
+                        "Patch content appears before a file operation."
+                    )
+
+                current.lines.append(line)
+
+        if current is not None:
+            result.append(current)
+
+        if not result:
+            raise ValueError("Patch contains no file operations.")
+
+        paths = [file_patch.path for file_patch in result]
+
+        if len(paths) != len(set(paths)):
+            raise ValueError(
+                "Each file may appear only once in a patch."
+            )
+
+        return result
+
+    @staticmethod
+    def _apply_update(
+            initial_content: str,
+            lines: list[str],
+    ) -> str:
+        newline = "\r\n" if "\r\n" in initial_content else "\n"
+
+        raw_hunks: list[list[str]] = []
+        current: list[str] = []
 
         for line in lines:
-            line_offsets.append(line_offsets[-1] + len(line))
+            if line.startswith("@@"):
+                if current:
+                    raw_hunks.append(current)
+                    current = []
+                continue
 
-        def _validate_replacements(replacement_objs_: list[Replacement]) -> OutputProtocol:
+            if line == "*** End of File":
+                continue
 
-            def _validate_ranges() -> OutputProtocol:
+            if not line.startswith((" ", "-", "+")):
+                if not line:
+                    continue
 
-                errors_: list[dict] = []
-
-                replacement_ranges: dict[int, tuple[int, int]] = {}
-
-                for idx, replacement_ in enumerate(replacement_objs_):
-                    if (
-                            replacement_.start_line
-                            > replacement_.end_line
-                    ):
-                        errors_.append({
-                            "index": idx,
-                            "message": "Start line can not be greater than end line"
-                        })
-                        continue
-
-                    if replacement_.end_line > len(lines):
-                        errors_.append({
-                            "index": idx,
-                            "message": "Out of bounds line range"
-                        })
-                        continue
-
-                    for idx_, (other_start, other_end) in replacement_ranges.items():
-                        if (
-                                replacement_.start_line <= other_end
-                                and other_start <= replacement_.end_line
-                        ):
-                            errors_.append({
-                                "message": f"Replacements {idx} and {idx_} conflict"
-                            })
-
-                    replacement_ranges[idx] = (
-                        replacement_.start_line,
-                        replacement_.end_line,
-                    )
-
-                if len(errors_) > 0:
-                    return OutputProtocol(
-                        status="error",
-                        content=errors_,
-                        message="Replacements do not match the specified line ranges"
-                    )
-
-                return OutputProtocol(
-                    status="success",
-                    content=replacement_objs_
+                raise ValueError(
+                    f"Invalid patch line: {line!r}"
                 )
 
-            def _validate_old_texts() -> OutputProtocol:
+            current.append(line)
 
-                errors_: list[dict] = []
+        if current:
+            raw_hunks.append(current)
 
-                for idx, replacement_ in enumerate(replacement_objs_):
+        if not raw_hunks:
+            raise ValueError("Update contains no hunks.")
 
-                    start_ = replacement_.start_line - 1
-                    end_ = replacement_.end_line
+        hunks: list[Hunk] = []
 
-                    target_piece_ = "".join(lines[start_:end_])
+        for index, raw_hunk in enumerate(raw_hunks):
+            old_lines = [
+                line[1:]
+                for line in raw_hunk
+                if line.startswith((" ", "-"))
+            ]
 
-                    if (
-                            _strip_final_newline(target_piece_)
-                            != _strip_final_newline(replacement_.old_text)
-                    ):
-                        errors_.append({
-                            "index": idx,
-                            "message": "Provided lines do not match old text"
-                        })
+            new_lines = [
+                line[1:]
+                for line in raw_hunk
+                if line.startswith((" ", "+"))
+            ]
 
-                if len(errors_) > 0:
-                    return OutputProtocol(
-                        status="error",
-                        content=errors_,
-                        message="Replacements do not match the specified line ranges"
-                    )
-
-                return OutputProtocol(
-                    status="success",
-                    content=replacement_objs_
+            if not old_lines:
+                raise ValueError(
+                    f"Hunk {index} contains no existing text."
                 )
 
-            validated_replacements_ = _validate_ranges()
+            old_text = newline.join(old_lines)
+            new_text = newline.join(new_lines)
 
-            if validated_replacements_.is_fail():
-                return validated_replacements_
+            first = initial_content.find(old_text)
 
-            return _validate_old_texts()
+            if first == -1:
+                raise ValueError(
+                    f"Hunk {index} target was not found."
+                )
 
-        replacement_objs = [
-            Replacement.model_construct(**replacement)
-            for replacement in replacements
-        ]
-
-        validated_replacements = _validate_replacements(
-            replacement_objs_=replacement_objs
-        )
-
-        if validated_replacements.is_fail():
-            return validated_replacements
-
-        replacement_order = sorted(
-            validated_replacements.content,
-            key=lambda r: r.start_line,
-            reverse=True
-        )
-
-        text = "".join(lines)
-
-        for replacement in replacement_order:
-            start = line_offsets[replacement.start_line - 1]
-            end = line_offsets[replacement.end_line]
-
-            old_piece = text[start:end]
-            has_trailing_newline = old_piece.endswith("\n")
-
-            new_text = replacement.new_text
-            if has_trailing_newline and new_text:
-                new_text += "\n"
-
-            text = text[:start] + new_text + text[end:]
-
-        with open(full_path, "w", encoding="utf-8") as file:
-            file.write(text)
-
-        return OutputProtocol(
-            status="success",
-            content=path,
-        )
-
-    @_tool(
-        description=(
-                "Create a new file."
-        ),
-        parameters=Parameters(
-            properties={
-                "path": {
-                    "type": "string",
-                    "description": "Repository-relative path for the new file.",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Complete initial content of the file.",
-                },
-            },
-            required=["path", "content"],
-            additional_properties=False,
-        ),
-    )
-    def create_file(
-        self,
-        path: str,
-        content: str,
-    ) -> OutputProtocol:
-        resolved_path = self.pather.resolve_path(path=path)
-
-        if resolved_path.is_fail():
-            return resolved_path
-
-        full_path = resolved_path.content
-
-        if full_path.exists():
-            return OutputProtocol(
-                status="error",
-                message=f"File {full_path} already exists",
+            second = initial_content.find(
+                old_text,
+                first + 1,
             )
 
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(content, encoding="utf-8")
+            if second != -1:
+                raise ValueError(
+                    f"Hunk {index} target is ambiguous."
+                )
 
-        return OutputProtocol(
-            status="success",
-            content={
-                "path": path,
-            }
-        )
+            hunks.append(
+                Hunk(
+                    start=first,
+                    end=first + len(old_text),
+                    new_text=new_text,
+                )
+            )
 
-    @_tool(
-        description="Deletes the file with provided path.",
-        parameters=Parameters(
-            properties={
-                "path": {
-                    "type": "string",
-                    "description": "Repository-relative path for the file to be deleted.",
-                },
-            },
-            required=["path"],
-            additional_properties=False,
-        ),
-    )
-    def delete_file(self, path: str) -> OutputProtocol:
-        resolve_filed = self.pather.resolve_file(path=path)
+        hunks.sort(key=lambda hunk: hunk.start)
 
-        if resolve_filed.is_fail():
-            return resolve_filed
+        for current_, next_hunk in zip(hunks, hunks[1:]):
+            if next_hunk.start < current_.end:
+                raise ValueError("Update hunks overlap.")
 
-        full_path = resolve_filed.content
+        content = initial_content
 
-        full_path.unlink()
+        for hunk in reversed(hunks):
+            content = (
+                    content[:hunk.start]
+                    + hunk.new_text
+                    + content[hunk.end:]
+            )
 
-        return OutputProtocol(
-            status="success",
-            content=path
-        )
+        return content
+
+    @staticmethod
+    def _parse_added_file(lines: list[str]) -> str:
+        content: list[str] = []
+
+        for line in lines:
+            if not line:
+                continue
+
+            if not line.startswith("+"):
+                raise ValueError(
+                    "Every Add File content line must start with '+'."
+                )
+
+            content.append(line[1:])
+
+        return "\n".join(content)
 
     @_tool(
         description="Deletes the directory with provided path.",

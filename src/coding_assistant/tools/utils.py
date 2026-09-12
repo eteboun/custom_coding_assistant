@@ -1,17 +1,24 @@
 import ast
+from dataclasses import dataclass
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from ..utils import OutputProtocol
 
-class Replacement(BaseModel):
+Operation = Literal["update", "add", "delete"]
 
-    model_config = ConfigDict(extra="forbid")
+@dataclass
+class FilePatch:
+    operation: Operation
+    path: str
+    lines: list[str]
 
-    old_text: str
+@dataclass
+class Hunk:
+    start: int
+    end: int
     new_text: str
-    start_line: int = Field(ge=1)
-    end_line: int = Field(ge=1)
+
 
 class Pather:
 
