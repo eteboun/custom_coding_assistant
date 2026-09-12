@@ -134,10 +134,10 @@ class Assistant:
 
         workflows = self.llm.workflows.map.keys()
         return (f"Available workflows:\n"
-                f"{'\n'.join(tuple(map(
+                f"{'\n'.join(map(
                     lambda wf: '- ' + wf,
                     workflows
-                )))}")
+                ))}")
 
     @_command
     def help(self) -> str:
