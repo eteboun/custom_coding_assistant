@@ -1,1 +1,0 @@
-Diagnose and fix existing incorrect or broken behavior with minimal inspection, targeted changes, and proportional verification.
