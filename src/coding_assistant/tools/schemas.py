@@ -30,37 +30,20 @@ class Symbol(Serializable):
         }
 
 @dataclass(frozen=True)
-class Parameters(Serializable):
+class Parameters:
     properties: dict[str, dict]
     required: list[str]
     additional_properties: bool
 
     type: str = "object"
 
-    @override
-    def serialize(self) -> dict:
-        return {
-            "type": self.type,
-            "properties": self.properties,
-            "required": self.required,
-            "additionalProperties": self.additional_properties
-        }
 
 @dataclass(frozen=True)
-class ToolSchema(Serializable):
+class ToolSchema:
     name: str
     description: str
     parameters: Parameters
     strict: bool
-
-    @override
-    def serialize(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters.serialize(),
-            "strict": self.strict
-        }
 
     @classmethod
     def from_func(cls,

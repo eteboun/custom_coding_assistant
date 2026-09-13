@@ -109,7 +109,13 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             ToolParam(
                 name=tool.name,
                 description=tool.description,
-                input_schema=tool.parameters.serialize(),
+                input_schema={
+                    "type": "object",
+                    "properties": tool.parameters.properties,
+                    "required": tool.parameters.required,
+                    "additionalProperties": tool.parameters.additional_properties
+                },
+                strict=tool.strict
             )
             for tool in self.tools.datas
         ]

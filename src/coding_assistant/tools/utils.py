@@ -1,4 +1,4 @@
-import ast
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -124,7 +124,60 @@ class Pather:
             content=full_path,
         )
 
-    def is_allowed_filepath(
+    def search_files(
+            self,
+            pattern: str | None = None,
+            max_results: int = 100,
+    ) -> OutputProtocol:
+        if max_results < 1:
+            return OutputProtocol(
+                status="error",
+                message="max_results must be at least 1.",
+            )
+
+        cmd = ["rg", "--files"]
+
+        if pattern:
+            cmd += ["-g", pattern]
+
+        for directory in self.blocked_dirs:
+            directory = directory.replace("\\", "/").rstrip("/")
+            cmd += ["-g", f"!{directory}/**"]
+
+        for file in self.blocked_files:
+            file = file.replace("\\", "/")
+            cmd += ["-g", f"!{file}"]
+
+        result = subprocess.run(
+            cmd,
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode not in (0, 1):
+            return OutputProtocol(
+                status="error",
+                message=result.stderr.strip(),
+            )
+
+        files = []
+
+        for path in result.stdout.splitlines():
+            if not self.is_allowed_path(path=Path(path)):
+                continue
+
+            files.append(path)
+
+            if len(files) >= max_results:
+                break
+
+        return OutputProtocol(
+            status="success",
+            content=files,
+        )
+
+    def is_allowed_file(
             self,
             path: Path
     ) -> bool:
@@ -134,35 +187,25 @@ class Pather:
 
         return not resolved_file.is_fail()
 
-    def search_files_containing_terms(
+    def is_allowed_dir(
             self,
-            terms: list[str],
-            extension: str = ".py"
-    ) -> list[Path]:
+            path: Path
+    ) -> bool:
+        resolved_dir = self.resolve_dir(
+            path=path.as_posix()
+        )
 
-        found_files: list[Path] = []
+        return not resolved_dir.is_fail()
 
-        for path in self.repo_path.rglob(f"*{extension}"):
-            relative_path = path.relative_to(self.repo_path)
-            resolved_file = self.resolve_file(
-                path=relative_path.as_posix()
-            )
+    def is_allowed_path(
+            self,
+            path: Path
+    ) -> bool:
+        resolved_path = self.resolve_path(
+            path=path.as_posix()
+        )
 
-            if resolved_file.is_fail():
-                continue
-
-            full_path = resolved_file.content
-
-            code = full_path.read_text(encoding="utf-8")
-
-            if all(term in code for term in terms):
-                found_files.append(full_path)
-
-        return found_files
-
-def parse_python_file(path: Path) -> ast.Module:
-    with open(path, encoding="utf-8") as f:
-        return ast.parse(f.read())
+        return not resolved_path.is_fail()
 
 def symbol_matches(
     name: str,

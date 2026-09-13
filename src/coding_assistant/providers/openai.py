@@ -99,7 +99,12 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 "type": "function",
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.parameters.serialize(),
+                "parameters": {
+                    "type": "object",
+                    "properties": tool.parameters.properties,
+                    "required": tool.parameters.required,
+                    "additionalProperties": tool.parameters.additional_properties
+                },
                 "strict": tool.strict,
             }
             for tool in self.tools.datas

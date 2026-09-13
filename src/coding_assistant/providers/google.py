@@ -106,11 +106,11 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 "type": "function",
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": (
-                    tool.parameters
-                    .serialize()
-                    .pop("additionalProperties")
-                )
+                "parameters": {
+                    "type": "object",
+                    "properties": tool.parameters.properties,
+                    "required": tool.parameters.required
+                }
             }
             for tool in self.tools.datas
         ]

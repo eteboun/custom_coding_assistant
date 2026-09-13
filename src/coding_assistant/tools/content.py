@@ -7,7 +7,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from .schemas import Symbol, SymbolKind, ToolSchema, Parameters
-from .utils import symbol_matches, parse_python_file, FilePatch, Hunk, Pather
+from .utils import symbol_matches, FilePatch, Hunk, Pather
 from ..utils import OutputProtocol
 
 class Tools:
@@ -319,164 +319,57 @@ class Tools:
             additional_properties=False,
         ),
     )
-    def list_files(self, path: str) -> OutputProtocol:
+    def list_directory(self, path: str) -> OutputProtocol:
         resolved_dir = self.pather.resolve_dir(path=path)
 
         if resolved_dir.is_fail():
             return resolved_dir
 
-        full_path = resolved_dir.content
+        entries = sorted(
+            e.name
+            for e in resolved_dir.content.iterdir()
+            if self.pather.is_allowed_path(e)
+        )
 
         return OutputProtocol(
             status="success",
-            content=[
-                e.name
-                for e in full_path.iterdir()
-            ]
+            content=entries,
         )
 
     @_tool(
         description=(
-                "Search repository python files "
-                "for specific class or function names when the location is unknown."
+                "Find repository files whose paths match an optional glob pattern. "
+                "If no pattern is provided, list repository files. "
+                "Use this when relevant files are unknown but can be narrowed by path, filename, or extension."
         ),
         parameters=Parameters(
             properties={
-                "notation": {
+                "pattern": {
                     "type": "string",
                     "description": (
-                            "Class or function name with proper hierarchy. "
-                            "E.g. 'run' for general search for the function 'run', "
-                            "'Assistant.run' for the method 'run' in the 'Assistant' class."
+                            "Optional glob pattern such as '*.py', "
+                            "'src/**/*.ts', or '**/*test*'."
                     ),
-                }
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of matching paths to return.",
+                    "minimum": 1,
+                    "default": 100,
+                },
             },
-            required=["notation"],
+            required=[],
             additional_properties=False,
         ),
     )
-    def search_symbol(self, notation: str) -> OutputProtocol:
-
-        full_paths = self.pather.search_files_containing_terms(
-            notation.split("."),
-            extension=".py"
-        )
-
-        symbols: list[dict] = []
-        errors: list[str] = []
-
-        allow_unqualified = "." not in notation
-        for full_path in full_paths:
-
-            try:
-                tree = parse_python_file(path=full_path)
-            except SyntaxError:
-                errors.append(
-                    f"Failed to parse Python file: {full_path.relative_to(self.repo_path).as_posix()}"
-                )
-                continue
-
-            symbols.extend(
-                symbol.serialize()
-                for symbol in self._walk_symbols(
-                    search_notation=notation,
-                    allow_unqualified=allow_unqualified,
-                    path=full_path.relative_to(self.repo_path),
-                    node=tree,
-                )
-            )
-
-        content = {
-            "symbols": symbols
-        }
-
-        if errors:
-            content["errors"] = errors
-
-        return OutputProtocol(
-            status="success",
-            content=content
-        )
-
-    @_tool(
-        description=(
-                "Read a specific class or function data "
-                "when both its file path and exact qualified name are known."
-        ),
-        parameters=Parameters(
-            properties={
-                "path": {
-                    "type": "string",
-                    "description": "Repository-relative Python file path.",
-                },
-                "notation": {
-                    "type": "string",
-                    "description": (
-                            "Class or function name with proper hierarchy. "
-                            "E.g. 'run' for general search for the function 'run', "
-                            "'Assistant.run' for the method 'run' in the 'Assistant' class."
-                    ),
-                },
-            },
-            required=["path", "notation"],
-            additional_properties=False,
-        ),
-    )
-    def read_symbol(self, path: str, notation: str) -> OutputProtocol:
-
-        resolved_file = self.pather.resolve_file(path=path)
-
-        if resolved_file.is_fail():
-            return resolved_file
-
-        full_path = resolved_file.content
-
-        try:
-            tree = parse_python_file(path=full_path)
-        except SyntaxError:
-            return OutputProtocol(
-                status="error",
-                message=f"Failed to parse Python file: {
-                    full_path.relative_to(self.repo_path).as_posix()
-                }"
-            )
-
-        symbols = self._walk_symbols(
-            search_notation=notation,
-            allow_unqualified=False,
-            path=full_path.relative_to(self.repo_path),
-            node=tree
-        )
-
-        if not symbols:
-            return OutputProtocol(
-                status="error",
-                message=f"Symbol not found: {notation}"
-            )
-
-        if len(symbols) > 1:
-            return OutputProtocol(
-                status="error",
-                message=f"Multiple symbols found: {notation}"
-            )
-
-        symbol_data = symbols[0]
-
-        read_result = Tools.read_file(
-            path=path,
-            start_line=symbol_data.start_line,
-            end_line=symbol_data.end_line
-        )
-
-        if read_result.is_fail():
-            return read_result
-
-        return OutputProtocol(
-            status="success",
-            content={
-                "notation": symbol_data.notation,
-                "content": read_result.content
-            }
+    def search_files(
+            self,
+            pattern: str | None = None,
+            max_results: int = 100,
+    ) -> OutputProtocol:
+        return self.pather.search_files(
+            pattern=pattern,
+            max_results=max_results
         )
 
     @_tool(
@@ -965,30 +858,6 @@ class Tools:
     def run_command(self, command: list[str]) -> OutputProtocol:
         return self._run_docker(
             command=command
-        )
-
-    @_tool(
-        description=(
-                "Show the repository structure for broad exploration when relevant files are unknown."
-        ),
-        parameters=Parameters(
-            properties={},
-            required=[],
-            additional_properties=False,
-        ),
-    )
-    def repo_tree(self) -> OutputProtocol:
-        files: list[str] = []
-
-        for path in self.repo_path.rglob("*"):
-            relative_path = path.relative_to(self.repo_path)
-
-            if self.pather.is_allowed_filepath(path=path):
-                files.append(relative_path.as_posix())
-
-        return OutputProtocol(
-            status="success",
-            content=files,
         )
 
 @dataclass(frozen=True)
