@@ -16,13 +16,13 @@ dependencies = [
 ]
 
 [project.scripts]
-myassistant = "coding_assistant.cli:main"
+custom-assistant = "coding_assistant.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 coding_agent = [
-    "ai/instructions.md",
-    "llm_data/*.json"
+    "models.json",
+    "ai/instructions.md"
 ]

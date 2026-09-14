@@ -29,10 +29,11 @@ class AnthropicLLM(BaseLLM[Anthropic]):
 
         self.messages: list[MessageParam] = []
 
-    def _generate(
+    @override
+    def generate(
             self,
-            inputs: list[MessageParam],
-            instructions: str,
+            inputs: str | list[ToolOutput],
+            instructions: str
     ) -> Message:
         kwargs = {}
 
@@ -41,18 +42,40 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                         effort=self.reasoning
                     )
 
+        inputs = (
+            inputs
+            if isinstance(inputs, str)
+            else [
+                    self.tool_output_contract(output)
+                    for output in inputs
+                ]
+        )
+        message: MessageParam = {
+            "role": "user",
+            "content": inputs
+        }
+        self.messages.append(message)
+
         with self.client.messages.stream(
             model=self.model_data.id,
             max_tokens=self.model_data.max_output_tokens,
             system=instructions,
             tools=self.tool_contract(),
-            messages=inputs,
+            messages=self.messages,
             thinking=ThinkingConfigAdaptiveParam(
                 type="adaptive"
             ),
             **kwargs
         ) as stream:
-            return stream.get_final_message()
+            response = stream.get_final_message()
+
+        self.messages.append({
+            "role": "assistant",
+            "content": response.content,
+        })
+
+        self._last_response = response
+        return response
 
     @override
     def usage(self, response: Message) -> TokenUsage:
@@ -119,35 +142,3 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             )
             for tool in self.tools.datas
         ]
-
-    @override
-    def initial_call(self, query: str, instructions: str) -> Message:
-        message: MessageParam = {
-                "role": "user",
-                "content": query,
-            }
-
-        self.messages.append(message)
-        return self._generate([message], instructions=instructions)
-
-    @override
-    def next_call(
-            self,
-            outputs: list[ToolOutput],
-            response: Message,
-            instructions: str
-    ) -> Message:
-        self.messages.append({
-            "role": "assistant",
-            "content": response.content,
-        })
-
-        self.messages.append({
-            "role": "user",
-            "content": [
-                self.tool_output_contract(output)
-                for output in outputs
-            ],
-        })
-
-        return self._generate(self.messages, instructions=instructions)

@@ -27,11 +27,11 @@ class OpenAILLM(BaseLLM[OpenAI]):
             client=OpenAI()
         )
 
-    def _generate(
+    @override
+    def generate(
             self,
-            inputs,
-            instructions: str,
-            prev_id: str | None = None
+            inputs: str | list[ToolOutput],
+            instructions: str
     ) -> Response:
         kwargs = {}
 
@@ -40,16 +40,28 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 effort=self.reasoning
             )
 
-        if prev_id is not None:
-            kwargs["previous_response_id"] = prev_id
+        if self._last_response is not None:
+            kwargs["previous_response_id"] = self._last_response.id
 
-        return self.client.responses.create(
+        inputs = (
+            inputs
+            if isinstance(inputs, str)
+            else [
+                    self.tool_output_contract(output)
+                    for output in inputs
+                ]
+        )
+
+        response = self.client.responses.create(
             model=self.model_data.id,
             instructions=instructions,
             input=inputs,
             tools=self.tool_contract(),
             **kwargs
         )
+
+        self._last_response = response
+        return response
 
     @override
     def usage(self, response: Response) -> TokenUsage:
@@ -109,26 +121,3 @@ class OpenAILLM(BaseLLM[OpenAI]):
             }
             for tool in self.tools.datas
         ]
-
-    @override
-    def initial_call(self, query: str, instructions: str) -> Response:
-        return self._generate(
-            inputs=query,
-            instructions=instructions
-        )
-
-    @override
-    def next_call(
-            self,
-            outputs: list[ToolOutput],
-            response: Response,
-            instructions: str
-    ) -> Response:
-        return self._generate(
-            inputs=[
-                self.tool_output_contract(output)
-                for output in outputs
-            ],
-            prev_id=response.id,
-            instructions=instructions
-        )

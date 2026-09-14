@@ -34,6 +34,8 @@ class BaseLLM[ClientT](ABC):
             log_path=config.log_path
         )
 
+        self._last_response = None
+
     def _resolve_model(
             self,
             provider: ProviderId
@@ -99,11 +101,11 @@ class BaseLLM[ClientT](ABC):
         ...
 
     @abstractmethod
-    def initial_call(self, query: str, instructions: str):
-        ...
-
-    @abstractmethod
-    def next_call(self, response, outputs, instructions: str):
+    def generate(
+            self,
+            inputs,
+            instructions: str
+    ):
         ...
 
     def log(self) -> OutputProtocol:
@@ -113,8 +115,8 @@ class BaseLLM[ClientT](ABC):
         query_log = QueryLog(query=query)
 
         try:
-            response = self.initial_call(
-                query=query,
+            response = self.generate(
+                inputs=query,
                 instructions=self.instructions
             )
 
@@ -157,9 +159,8 @@ class BaseLLM[ClientT](ABC):
                     ) for call, tool_output in zip(tool_calls, outputs)]
                 ))
 
-                response = self.next_call(
-                    response=response,
-                    outputs=outputs,
+                response = self.generate(
+                    inputs=outputs,
                     instructions=self.instructions
                 )
 
