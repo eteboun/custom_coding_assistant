@@ -1,10 +1,10 @@
 from pathlib import Path
 import inspect
 
-from .ai.config import Config
-from .ai.schemas import models_by_provider
+from .config import Config
 
-from .llm import create_llm
+from .providers.schemas import models_by_provider
+from .providers.llm import create_llm
 
 class Assistant:
 

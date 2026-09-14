@@ -4,7 +4,7 @@ from pydantic import BaseModel, model_validator
 from typing import Literal, Any, Self
 
 from ..utils import Serializable
-from .config import models_json
+from ..config import models_json
 
 ProviderId = Literal[
     "openai",

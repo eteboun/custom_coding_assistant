@@ -6,8 +6,8 @@ from google import genai
 from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
-from ..ai.schemas import TokenUsage
-from ..ai.config import Config
+from .schemas import TokenUsage
+from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
 class GeminiLLM(BaseLLM[genai.Client]):

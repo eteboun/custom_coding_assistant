@@ -10,7 +10,7 @@ instructions = (
 ).read_text()
 
 config_filename = "assistant.json"
-models_json = _BASE_DIR.parent / "models.json"
+models_json = _BASE_DIR / "models.json"
 
 class Config(BaseModel):
 

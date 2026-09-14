@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from .ai.config import Config
-from .ai.schemas import models_data
+from ..config import Config
+from .schemas import models_data
 
-from .providers.base import BaseLLM
-from .providers.google import GeminiLLM
-from .providers.openai import OpenAILLM
-from .providers.anthropic import AnthropicLLM
+from .base import BaseLLM
+from .google import GeminiLLM
+from .openai import OpenAILLM
+from .anthropic import AnthropicLLM
 
 def create_llm(
         instructions: str,

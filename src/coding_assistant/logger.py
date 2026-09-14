@@ -3,9 +3,9 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from ..utils import Serializable
-from ..utils import OutputProtocol
-from .schemas import TokenUsage
+from .utils import Serializable
+from .utils import OutputProtocol
+from .providers.schemas import TokenUsage
 
 @dataclass
 class ToolCallLog(Serializable):

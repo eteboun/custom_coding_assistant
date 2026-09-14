@@ -1,9 +1,9 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from ..ai.schemas import models_data, ModelData, ProviderId, TokenUsage, ReasoningLevel
-from ..ai.logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
-from ..ai.config import Config
+from .schemas import models_data, ModelData, ProviderId, TokenUsage, ReasoningLevel
+from ..logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
+from ..config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
 from ..utils import OutputProtocol
 

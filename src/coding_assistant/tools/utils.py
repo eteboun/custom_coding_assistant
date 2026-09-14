@@ -260,17 +260,3 @@ class Pather:
         )
 
         return not resolved_path.is_fail()
-
-def symbol_matches(
-    name: str,
-    notation: str,
-    search_notation: str,
-    allow_unqualified: bool,
-) -> bool:
-    return (
-        search_notation == notation
-        or (
-            allow_unqualified
-            and search_notation == name
-        )
-    )

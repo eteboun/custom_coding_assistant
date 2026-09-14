@@ -8,8 +8,8 @@ from anthropic.types import (ToolParam, MessageParam,
                              Message, ToolResultBlockParam)
 
 from .base import BaseLLM
-from ..ai.schemas import TokenUsage
-from ..ai.config import Config
+from .schemas import TokenUsage
+from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
 class AnthropicLLM(BaseLLM[Anthropic]):

@@ -1,7 +1,7 @@
 {
 
-    "model_name": "gpt-5.4-mini",
-    "reasoning": "low",
+    "model_name": "gpt-6-astra",
+    "reasoning": "medium",
 
     "max_iters": 10,
 
