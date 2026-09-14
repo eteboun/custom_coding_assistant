@@ -1,13 +1,12 @@
 import subprocess
-import ast
 import inspect
 
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
 
-from .schemas import Symbol, SymbolKind, ToolSchema, Parameters
-from .utils import symbol_matches, FilePatch, Hunk, Pather
+from .schemas import ToolSchema, Parameters
+from .utils import FilePatch, Hunk, Pather
 from ..utils import OutputProtocol
 
 class Tools:
@@ -83,114 +82,6 @@ class Tools:
             },
             message="Execution failed" if completed.returncode != 0 else None,
         )
-
-    def _run_dockerized_file(self, path: Path) -> OutputProtocol:
-        relative_path = path.relative_to(self.repo_path)
-
-        return self._run_docker([
-            "python",
-            relative_path.as_posix(),
-        ])
-
-    def _run_dockerized_code(self, code: str) -> OutputProtocol:
-        return self._run_docker([
-            "python",
-            "-c",
-            code,
-        ])
-
-    def _walk_symbols(
-            self,
-            node: ast.AST,
-            path: Path,
-            search_notation: str,
-            allow_unqualified: bool,
-            curr_notation: str | None = None,
-            parent_kind: SymbolKind | None = None,
-    ) -> list[Symbol]:
-        symbols: list[Symbol] = []
-
-        for child in ast.iter_child_nodes(node):
-
-            if isinstance(child, ast.ClassDef):
-                name = child.name
-                next_notation = (
-                    f"{curr_notation}.{name}"
-                    if curr_notation is not None
-                    else name
-                )
-
-                if symbol_matches(
-                    name=name,
-                    notation=next_notation,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                ):
-                    assert child.end_lineno is not None
-                    symbols.append(
-                        Symbol(
-                            path=path,
-                            notation=next_notation,
-                            kind=SymbolKind.CLASS,
-                            start_line=child.lineno,
-                            end_line=child.end_lineno,
-                        )
-                    )
-
-                symbols += self._walk_symbols(
-                    node=child,
-                    curr_notation=next_notation,
-                    parent_kind=SymbolKind.CLASS,
-                    path=path,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified
-                )
-
-            elif (
-                    isinstance(child, ast.FunctionDef)
-                    or isinstance(child, ast.AsyncFunctionDef)
-            ):
-                name = child.name
-
-                next_notation = (
-                    f"{curr_notation}.{name}"
-                    if curr_notation is not None
-                    else name
-                )
-
-                kind = (
-                    SymbolKind.METHOD
-                    if parent_kind == SymbolKind.CLASS
-                    else SymbolKind.FUNCTION
-                )
-
-                if symbol_matches(
-                    name=name,
-                    notation=next_notation,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                ):
-                    assert child.end_lineno is not None
-                    symbols.append(
-                        Symbol(
-                            path=path,
-                            notation=next_notation,
-                            kind=kind,
-                            start_line=child.lineno,
-                            end_line=child.end_lineno,
-                        )
-                    )
-
-                symbols += self._walk_symbols(
-                    node=child,
-                    curr_notation=next_notation,
-                    parent_kind=kind,
-                    path=path,
-                    search_notation=search_notation,
-                    allow_unqualified=allow_unqualified,
-                )
-
-        return symbols
 
     @staticmethod
     def _tool(
@@ -393,59 +284,16 @@ class Tools:
             additional_properties=False,
         )
     )
-    def search_code(self,
+    def search_text(self,
                     query: str,
                     context_lines: int = 2,
                     max_output_lines: int = 100
                     ) -> OutputProtocol:
-        try:
-            command = [
-                "rg",
-                "-n",
-                "-C",
-                str(context_lines),
-                query,
-                self.repo_path.as_posix(),
-            ]
-
-            for file in self.pather.blocked_files:
-                command.extend(["-g", f"!{file}"])
-
-            for directory in self.pather.blocked_dirs:
-                command.extend(["-g", f"!{directory}/**"])
-
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace"
-            )
-        except FileNotFoundError:
-            return OutputProtocol(
-                status="error",
-                message="ripgrep is not installed or not available in PATH"
-            )
-
-        if process.returncode == 0:
-            findings = process.stdout.splitlines()
-
-            return OutputProtocol(
-                status="success",
-                content="\n".join(findings[:max_output_lines])
-            )
-
-        elif process.returncode == 1:
-            return OutputProtocol(
-                status="error",
-                message="No match found"
-            )
-
-        else:
-            return OutputProtocol(
-                status="error",
-                message=f"An error occurred: {process.stderr}"
-            )
+        return self.pather.search_text(
+            text=query,
+            context_lines=context_lines,
+            max_output_lines=max_output_lines
+        )
 
     @_tool(
         description=(

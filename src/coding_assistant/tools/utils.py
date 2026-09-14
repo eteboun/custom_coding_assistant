@@ -47,7 +47,7 @@ class Pather:
         if full_path.name in self.blocked_files:
             return OutputProtocol(
                 status="error",
-                message=f"Path '{full_path}' is blocked"
+                message="Path is not accessible"
             )
 
         relative_parts = full_path.relative_to(self.repo_path).parts
@@ -55,7 +55,7 @@ class Pather:
         if any(part in self.blocked_dirs for part in relative_parts):
             return OutputProtocol(
                 status="error",
-                message=f"Path '{full_path}' is blocked"
+                message="Path is not accessible"
             )
 
         return OutputProtocol(
@@ -176,6 +176,60 @@ class Pather:
             status="success",
             content=files,
         )
+
+    def search_text(self,
+                    text: str,
+                    context_lines: int = 2,
+                    max_output_lines: int = 100
+                    ) -> OutputProtocol:
+        try:
+            command = [
+                "rg",
+                "-n",
+                "-C",
+                str(context_lines),
+                text,
+                self.repo_path.as_posix(),
+            ]
+
+            for file in self.blocked_files:
+                command.extend(["-g", f"!{file}"])
+
+            for directory in self.blocked_dirs:
+                command.extend(["-g", f"!{directory}/**"])
+
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace"
+            )
+        except FileNotFoundError:
+            return OutputProtocol(
+                status="error",
+                message="ripgrep is not installed or not available in PATH"
+            )
+
+        if process.returncode == 0:
+            findings = process.stdout.splitlines()
+
+            return OutputProtocol(
+                status="success",
+                content="\n".join(findings[:max_output_lines])
+            )
+
+        elif process.returncode == 1:
+            return OutputProtocol(
+                status="error",
+                message="No match found"
+            )
+
+        else:
+            return OutputProtocol(
+                status="error",
+                message=f"An error occurred: {process.stderr}"
+            )
 
     def is_allowed_file(
             self,

@@ -1,33 +1,6 @@
-from enum import StrEnum
 from dataclasses import dataclass
 from collections.abc import Callable
-from pathlib import Path
-from typing import Self, override
-
-from ..utils import Serializable
-
-class SymbolKind(StrEnum):
-    METHOD = "method"
-    FUNCTION = "function"
-    CLASS = "class"
-
-@dataclass(frozen=True)
-class Symbol(Serializable):
-    path: Path
-    notation: str
-    kind: SymbolKind
-    start_line: int
-    end_line: int
-
-    @override
-    def serialize(self) -> dict:
-        return {
-            "path": self.path.as_posix(),
-            "kind": self.kind.value,
-            "start_line": self.start_line,
-            "end_line": self.end_line,
-            "notation": self.notation
-        }
+from typing import Self
 
 @dataclass(frozen=True)
 class Parameters:
