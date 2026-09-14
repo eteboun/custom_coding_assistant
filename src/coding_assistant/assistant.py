@@ -1,7 +1,7 @@
 from pathlib import Path
 import inspect
 
-from .ai.config import Config, config_reasoning_levels
+from .ai.config import Config
 from .ai.schemas import models_by_provider
 
 from .llm import create_llm
@@ -113,7 +113,11 @@ class Assistant:
         Shows valid reasoning levels.
         """
 
-        return f"Valid reasoning levels: {', '.join(config_reasoning_levels)}."
+        levels = self.llm.model_data.reasoning.levels
+        if levels:
+            return f"Valid reasoning levels: {', '.join(levels)}."
+        else:
+            return f"No reasoning levels configured for model {self.llm.model_data.id}."
 
     @_command
     def tools(self) -> str:

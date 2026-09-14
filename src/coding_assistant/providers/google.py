@@ -33,9 +33,9 @@ class GeminiLLM(BaseLLM[genai.Client]):
     ) -> Interaction:
         kwargs = {}
 
-        if self.config.reasoning is not None:
+        if self.reasoning is not None:
             kwargs["generation_config"] = {
-                "thinking_level": self.config.reasoning
+                "thinking_level": self.reasoning
             }
 
         if prev_id is not None:

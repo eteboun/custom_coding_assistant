@@ -36,9 +36,9 @@ class AnthropicLLM(BaseLLM[Anthropic]):
     ) -> Message:
         kwargs = {}
 
-        if self.config.reasoning is not None:
+        if self.reasoning is not None:
             kwargs["output_config"] = OutputConfigParam(
-                        effort=self.config.reasoning
+                        effort=self.reasoning
                     )
 
         with self.client.messages.stream(

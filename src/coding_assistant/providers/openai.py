@@ -35,9 +35,9 @@ class OpenAILLM(BaseLLM[OpenAI]):
     ) -> Response:
         kwargs = {}
 
-        if self.config.reasoning is not None:
+        if self.reasoning is not None:
             kwargs["reasoning"] = Reasoning(
-                effort=self.config.reasoning
+                effort=self.reasoning
             )
 
         if prev_id is not None:

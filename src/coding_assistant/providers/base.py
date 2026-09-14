@@ -1,7 +1,7 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from ..ai.schemas import (models_data, ModelData, ProviderId, TokenUsage,)
+from ..ai.schemas import models_data, ModelData, ProviderId, TokenUsage, ReasoningLevel
 from ..ai.logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
 from ..ai.config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
@@ -20,7 +20,7 @@ class BaseLLM[ClientT](ABC):
         self.client = client
         self.instructions = instructions
 
-        self.model_data = self._resolve_model(
+        self.model_data, self.reasoning = self._resolve_model(
             provider=provider
         )
 
@@ -36,8 +36,8 @@ class BaseLLM[ClientT](ABC):
 
     def _resolve_model(
             self,
-            provider: ProviderId,
-    ) -> ModelData:
+            provider: ProviderId
+    ) -> tuple[ModelData, ReasoningLevel | None]:
 
         model_data = models_data.models.get(
             self.config.model_name
@@ -53,25 +53,30 @@ class BaseLLM[ClientT](ABC):
                 f"Model {self.config.model_name} does not belong to {provider}"
             )
 
-        reasoning_levels = model_data.reasoning_levels
+        if model_data.reasoning.levels:
+            reasoning = self.config.reasoning
 
-        if reasoning_levels:
-            if self.config.reasoning is None:
+            if reasoning is None:
+                reasoning = model_data.reasoning.default
+
+                if reasoning is None:
+                    raise ValueError(
+                        f"No default reasoning configured for model {model_data.id}"
+                    )
+
+            elif reasoning not in model_data.reasoning.levels:
                 raise ValueError(
-                    f"reasoning is required for {self.config.model_name}"
+                    f"{model_data.id} does not support reasoning level {reasoning}"
                 )
 
-            if self.config.reasoning not in reasoning_levels:
-                raise ValueError(
-                    f"{self.config.model_name} does not support reasoning level {self.config.reasoning}"
-                )
+            return model_data, reasoning
 
-        elif self.config.reasoning is not None:
+        if self.config.reasoning is not None:
             raise ValueError(
-                f"{self.config.model_name} does not support configurable reasoning"
+                f"{model_data.id} does not support reasoning"
             )
 
-        return model_data
+        return model_data, None
 
     @abstractmethod
     def usage(self, response) -> TokenUsage:

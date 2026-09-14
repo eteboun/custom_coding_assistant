@@ -8,7 +8,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["low", "medium", "high", "xhigh", "max"],
+        "default": null
+      },
       "pricing": {
         "input": 10.0,
         "cached_input": 1.0,
@@ -21,7 +24,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 4.0,
         "cached_input": 0.4,
@@ -39,7 +45,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 2.0,
         "cached_input": 0.2,
@@ -57,7 +66,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 0.2,
         "cached_input": 0.02,
@@ -70,7 +82,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 5.0,
         "cached_input": 0.5,
@@ -88,7 +103,10 @@
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "default": "none"
+      },
       "pricing": {
         "input": 2.5,
         "cached_input": 0.25,
@@ -106,7 +124,10 @@
       "provider": "openai",
       "context_window": 400000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "default": "none"
+      },
       "pricing": {
         "input": 0.75,
         "cached_input": 0.075,
@@ -119,7 +140,10 @@
       "provider": "openai",
       "context_window": 400000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["none", "low", "medium", "high", "xhigh"],
+      "reasoning": {
+        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "default": "none"
+      },
       "pricing": {
         "input": 0.2,
         "cached_input": 0.02,
@@ -132,7 +156,10 @@
       "provider": "anthropic",
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["low", "medium", "high", "xhigh", "max"],
+        "default": "high"
+      },
       "pricing": {
         "input": 10.0,
         "cached_input": 0.25,
@@ -147,7 +174,10 @@
       "provider": "anthropic",
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["low", "medium", "high", "xhigh", "max"],
+        "default": "high"
+      },
       "pricing": {
         "input": 5.0,
         "cached_input": 0.5,
@@ -162,7 +192,10 @@
       "provider": "anthropic",
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning": {
+        "levels": ["low", "medium", "high", "xhigh", "max"],
+        "default": "high"
+      },
       "pricing": {
         "input": 2.0,
         "cached_input": 0.2,
@@ -177,7 +210,10 @@
       "provider": "anthropic",
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "reasoning_levels": ["low", "medium", "high", "max"],
+      "reasoning": {
+        "levels": ["low", "medium", "high", "max"],
+        "default": "high"
+      },
       "pricing": {
         "input": 3.0,
         "cached_input": 0.3,
@@ -192,7 +228,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["low", "medium", "high"],
+      "reasoning": {
+        "levels": ["low", "medium", "high"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 0.75,
         "cached_input": 0.075,
@@ -205,7 +244,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["low", "medium", "high"],
+      "reasoning": {
+        "levels": ["low", "medium", "high"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 0.75,
         "cached_input": 0.075,
@@ -218,7 +260,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["minimal", "low", "medium", "high"],
+      "reasoning": {
+        "levels": ["minimal", "low", "medium", "high"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 0.75,
         "cached_input": 0.075,
@@ -231,7 +276,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["minimal", "low", "medium", "high"],
+      "reasoning": {
+        "levels": ["minimal", "low", "medium", "high"],
+        "default": "medium"
+      },
       "pricing": {
         "input": 1.5,
         "cached_input": 0.15,
@@ -244,7 +292,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["minimal", "low", "medium", "high"],
+      "reasoning": {
+        "levels": ["minimal", "low", "medium", "high"],
+        "default": "minimal"
+      },
       "pricing": {
         "input": 0.3,
         "cached_input": 0.03,
@@ -257,7 +308,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["low", "medium", "high"],
+      "reasoning": {
+        "levels": ["low", "medium", "high"],
+        "default": "high"
+      },
       "pricing": {
         "input": 2.0,
         "output": 12.0
@@ -276,7 +330,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["minimal", "low", "medium", "high"],
+      "reasoning": {
+        "levels": ["minimal", "low", "medium", "high"],
+        "default": "high"
+      },
       "pricing": {
         "input": 0.5,
         "output": 3.0
@@ -288,7 +345,10 @@
       "provider": "google",
       "context_window": 1048576,
       "max_output_tokens": 65536,
-      "reasoning_levels": ["minimal", "low", "medium", "high"],
+      "reasoning": {
+        "levels": ["minimal", "low", "medium", "high"],
+        "default": "minimal"
+      },
       "pricing": {
         "input": 0.25,
         "cached_input": 0.025,

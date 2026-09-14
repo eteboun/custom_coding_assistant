@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-from typing import Literal, Any
+from pydantic import BaseModel, model_validator
+from typing import Literal, Any, Self
 
 from ..utils import Serializable
 from .config import models_json
@@ -13,14 +13,22 @@ ProviderId = Literal[
 ]
 
 ReasoningLevel = Literal[
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-]
+                    "none", "minimal", "low", "medium", "high", "xhigh", "max"
+               ]
+
+class Reasoning(BaseModel):
+    levels: list[ReasoningLevel]
+    default: ReasoningLevel | None
+
+    @model_validator(mode="after")
+    def validate_reasoning(self) -> Self:
+        if self.default is not None and self.default not in self.levels:
+            raise ValueError(
+                f"Default reasoning '{self.default}' is not in reasoning levels"
+            )
+
+        return self
+
 
 class ModelPricing(BaseModel):
     input: float
@@ -53,11 +61,10 @@ class ModelData(BaseModel):
     context_window: int
     max_output_tokens: int
 
-    reasoning_levels: list[ReasoningLevel] | None = None
+    reasoning: Reasoning
 
     pricing: ModelPricing
     pricing_rules: ModelPricingRules | None = None
-
 
 class ModelsData(BaseModel):
     currency: Literal["USD"]

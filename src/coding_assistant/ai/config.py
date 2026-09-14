@@ -1,6 +1,6 @@
 from pathlib import Path
 from pydantic import BaseModel
-from typing import Self, Literal, get_args
+from typing import Self
 import json
 
 _BASE_DIR = Path(__file__).resolve().parent
@@ -10,18 +10,12 @@ instructions = (
 ).read_text()
 
 config_filename = "assistant.json"
-_config_reasoning_levels = Literal[
-                    "low", "medium", "high"
-               ]
-
-config_reasoning_levels = get_args(_config_reasoning_levels)
-
 models_json = _BASE_DIR.parent / "llm_data" / "models.json"
 
 class Config(BaseModel):
 
     model_name: str
-    reasoning: _config_reasoning_levels | None = None
+    reasoning: str | None = None
 
     max_iters: int
 
