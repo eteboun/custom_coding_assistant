@@ -8,7 +8,7 @@ from anthropic.types import (ToolParam, MessageParam,
                              Message, ToolResultBlockParam)
 
 from .base import BaseLLM
-from .schemas import TokenUsage, MemoryType, MessageContext
+from .schemas import TokenUsage, MemoryType, MessageContext, Context
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -17,15 +17,24 @@ class AnthropicLLM(BaseLLM[Anthropic, MessageContext]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config
+            config: Config,
+            context: Context | None = None
     ):
+        if context is not None:
+            context = MessageContext[MessageParam](
+                query_records=context.query_records
+            )
+
+        else:
+            context = MessageContext[MessageParam]()
+
         super().__init__(
             instructions=instructions,
             repo_path=repo_path,
             config=config,
             provider="anthropic",
             client=Anthropic(),
-            context=MessageContext[MessageParam]()
+            context=context
         )
 
     @override

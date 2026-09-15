@@ -152,7 +152,7 @@ The container does not inherit your host virtual environment or installed develo
 
 ## Customization
 
-- [`assistant.json`](assistant.json): per-repository model, reasoning, iteration, logging, and exclusion settings.
+- [`assistant.json`](src/coding_assistant/assistant.json): per-repository model, reasoning, iteration, logging, and exclusion settings.
 - [`src/coding_assistant/models.json`](src/coding_assistant/models.json): model catalog and metadata.
 - [`src/coding_assistant/instructions.md`](src/coding_assistant/instructions.md): agent instructions loaded at startup; edit and restart to apply changes.
 - [`src/coding_assistant/providers/`](src/coding_assistant/providers/): provider adapters and the shared agent loop.

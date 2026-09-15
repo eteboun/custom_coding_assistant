@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import assert_never
 
 from ..config import Config
-from .schemas import models_data
+from .schemas import models_data, Context, ReasoningLevel, ModelData
 
 from .base import BaseLLM
 from .google import GeminiLLM
@@ -11,7 +12,8 @@ from .anthropic import AnthropicLLM
 def create_llm(
         instructions: str,
         repo_path: Path,
-        config: Config
+        config: Config,
+        context: Context | None = None
 ) -> BaseLLM:
     model_data = models_data.models.get(config.model_name)
 
@@ -25,24 +27,25 @@ def create_llm(
             return OpenAILLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config
+                config=config,
+                context=context
             )
 
         case "google":
             return GeminiLLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config
+                config=config,
+                context=context
             )
 
         case "anthropic":
             return AnthropicLLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config
+                config=config,
+                context=context
             )
 
         case _:
-            raise ValueError(
-                f"Unknown provider {model_data.provider}"
-            )
+            assert_never(model_data.provider)

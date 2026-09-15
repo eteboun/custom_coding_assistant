@@ -9,7 +9,7 @@ instructions = (
     _BASE_DIR / "instructions.md"
 ).read_text()
 
-config_filename = "assistant.json"
+config_file = _BASE_DIR / "assistant.json"
 models_json = _BASE_DIR / "models.json"
 
 class Config(BaseModel):
@@ -27,15 +27,14 @@ class Config(BaseModel):
     @staticmethod
     def _validate_json_path(json_path: Path) -> None:
         if not json_path.is_file():
-            raise FileNotFoundError(f"{json_path} is not a file")
+            raise ValueError(f"{json_path} is not a file")
 
         if json_path.suffix.lower() != ".json":
             raise ValueError(f"{json_path} is not a JSON file")
 
     @classmethod
-    def from_json(cls, json_path: str) -> Self:
-        json_path = Path(json_path).resolve()
-
+    def from_json(cls, json_path: Path, repo_path: Path) -> Self:
+        json_path = json_path.resolve()
         cls._validate_json_path(json_path)
 
         with open(json_path, "r", encoding="utf-8") as f:
@@ -43,7 +42,7 @@ class Config(BaseModel):
 
         obj = cls.model_validate(json_data)
 
-        obj.log_path = (json_path.parent / obj.log_path).resolve()
+        obj.log_path = (repo_path / obj.log_path).resolve()
         obj.log_path.mkdir(parents=False, exist_ok=True)
 
         return obj

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .schemas import ToolSchema, Parameters
 from .utils import FilePatch, Hunk, Pather
-from ..utils import OutputProtocol, Serializable
+from ..utils import OutputProtocol, Serializable, ToolUsageError
 
 class Tools:
 
@@ -299,13 +299,7 @@ class Tools:
     ) -> OutputProtocol:
         patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
-        try:
-            file_patches = self._parse_patch(patch)
-        except ValueError as e:
-            return OutputProtocol(
-                status="error",
-                message=str(e),
-            )
+        file_patches = self._parse_patch(patch)
 
         pending_writes: dict[Path, str] = {}
         pending_deletes: set[Path] = set()
@@ -410,10 +404,10 @@ class Tools:
         lines = patch.split("\n")
 
         if not lines or lines[0] != "*** Begin Patch":
-            raise ValueError("Patch must start with '*** Begin Patch'.")
+            raise ToolUsageError("Patch must start with '*** Begin Patch'.")
 
         if lines[-1] != "*** End Patch":
-            raise ValueError("Patch must end with '*** End Patch'.")
+            raise ToolUsageError("Patch must end with '*** End Patch'.")
 
         result: list[FilePatch] = []
         current: FilePatch | None = None
@@ -450,7 +444,7 @@ class Tools:
                 )
 
             elif line.startswith("*** "):
-                raise ValueError(
+                raise ToolUsageError(
                     f"Unsupported patch metadata: {line}"
                 )
 
@@ -459,7 +453,7 @@ class Tools:
                     if not line:
                         continue
 
-                    raise ValueError(
+                    raise ToolUsageError(
                         "Patch content appears before a file operation."
                     )
 
@@ -469,12 +463,12 @@ class Tools:
             result.append(current)
 
         if not result:
-            raise ValueError("Patch contains no file operations.")
+            raise ToolUsageError("Patch contains no file operations.")
 
         paths = [file_patch.path for file_patch in result]
 
         if len(paths) != len(set(paths)):
-            raise ValueError(
+            raise ToolUsageError(
                 "Each file may appear only once in a patch."
             )
 
@@ -504,7 +498,7 @@ class Tools:
                 if not line:
                     continue
 
-                raise ValueError(
+                raise ToolUsageError(
                     f"Invalid patch line: {line!r}"
                 )
 
@@ -514,7 +508,7 @@ class Tools:
             raw_hunks.append(current)
 
         if not raw_hunks:
-            raise ValueError("Update contains no hunks.")
+            raise ToolUsageError("Update contains no hunks.")
 
         hunks: list[Hunk] = []
 
@@ -532,7 +526,7 @@ class Tools:
             ]
 
             if not old_lines:
-                raise ValueError(
+                raise ToolUsageError(
                     f"Hunk {index} contains no existing text."
                 )
 
@@ -542,7 +536,7 @@ class Tools:
             first = initial_content.find(old_text)
 
             if first == -1:
-                raise ValueError(
+                raise ToolUsageError(
                     f"Hunk {index} target was not found."
                 )
 
@@ -552,7 +546,7 @@ class Tools:
             )
 
             if second != -1:
-                raise ValueError(
+                raise ToolUsageError(
                     f"Hunk {index} target is ambiguous."
                 )
 
@@ -568,7 +562,7 @@ class Tools:
 
         for current_, next_hunk in zip(hunks, hunks[1:]):
             if next_hunk.start < current_.end:
-                raise ValueError("Update hunks overlap.")
+                raise ToolUsageError("Update hunks overlap.")
 
         content = initial_content
 
@@ -590,7 +584,7 @@ class Tools:
                 continue
 
             if not line.startswith("+"):
-                raise ValueError(
+                raise ToolUsageError(
                     "Every Add File content line must start with '+'."
                 )
 
@@ -683,7 +677,14 @@ class ToolCall:
                 message=f"Tool {self.name} not found"
             )
         else:
-            output = tools.mapping[self.name](**self.args)
+            try:
+                output = tools.mapping[self.name](**self.args)
+
+            except ToolUsageError as e:
+                output = OutputProtocol(
+                    status="error",
+                    message=str(e)
+                )
 
         return ToolOutput(
             name=self.name,

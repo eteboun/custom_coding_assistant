@@ -46,3 +46,18 @@ class OutputProtocol(Serializable):
 
     def is_fail(self) -> bool:
         return self.status == "error"
+
+class RecoverableError(Exception):
+    pass
+
+class CommandError(RecoverableError):
+    pass
+
+class MaxIterationsError(RecoverableError):
+    pass
+
+class ToolUsageError(RecoverableError):
+    pass
+
+class ConfigError(RecoverableError):
+    pass

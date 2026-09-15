@@ -8,7 +8,7 @@ from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
-from .schemas import TokenUsage, MemoryType, IdContext
+from .schemas import TokenUsage, MemoryType, IdContext, Context
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -17,15 +17,24 @@ class OpenAILLM(BaseLLM[OpenAI, IdContext]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config
+            config: Config,
+            context: Context | None = None
     ):
+        if context is not None:
+            context = IdContext(
+                query_records=context.query_records
+            )
+
+        else:
+            context = IdContext()
+
         super().__init__(
             instructions=instructions,
             repo_path=repo_path,
             config=config,
             provider="openai",
             client=OpenAI(),
-            context=IdContext()
+            context=context
         )
 
     @override

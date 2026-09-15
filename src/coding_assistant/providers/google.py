@@ -6,7 +6,7 @@ from google import genai
 from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
-from .schemas import TokenUsage, MemoryType, IdContext
+from .schemas import TokenUsage, MemoryType, IdContext, Context
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
@@ -15,15 +15,24 @@ class GeminiLLM(BaseLLM[genai.Client, IdContext]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config
+            config: Config,
+            context: Context | None = None
     ):
+        if context is not None:
+            context = IdContext(
+                query_records=context.query_records
+            )
+
+        else:
+            context = IdContext()
+
         super().__init__(
             instructions=instructions,
             repo_path=repo_path,
             config=config,
             provider="google",
             client=genai.Client(),
-            context=IdContext()
+            context=context
         )
 
     @override

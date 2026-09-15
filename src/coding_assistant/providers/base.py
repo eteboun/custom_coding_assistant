@@ -1,12 +1,13 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from .schemas import (models_data, ModelData, ProviderId,
-                      TokenUsage, ReasoningLevel, QueryRecord, MemoryType, Context)
+from .utils import resolve_reasoning, resolve_model
+from .schemas import (ProviderId, TokenUsage, ReasoningLevel,
+                      QueryRecord, MemoryType, Context)
 from ..logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
 from ..config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
-from ..utils import OutputProtocol
+from ..utils import OutputProtocol, MaxIterationsError
 
 class BaseLLM[ClientT, ContextT: Context](ABC):
     def __init__(
@@ -22,8 +23,14 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
         self.client = client
         self.instructions = instructions
 
-        self.model_data, self.reasoning = self._resolve_model(
+        self.model_data = resolve_model(
+            model_name=config.model_name,
             provider=provider
+        )
+
+        self.reasoning = resolve_reasoning(
+            model_data=self.model_data,
+            reasoning=config.reasoning
         )
 
         self.tools = Tools(
@@ -38,49 +45,13 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
 
         self.context = context
 
-    def _resolve_model(
-            self,
-            provider: ProviderId
-    ) -> tuple[ModelData, ReasoningLevel | None]:
-
-        model_data = models_data.models.get(
-            self.config.model_name
+    def update_reasoning(self, reasoning: ReasoningLevel | None) -> None:
+        reasoning = resolve_reasoning(
+            model_data=self.model_data,
+            reasoning=reasoning
         )
 
-        if model_data is None:
-            raise ValueError(
-                f"Model {self.config.model_name} is not recognized"
-            )
-
-        if model_data.provider != provider:
-            raise ValueError(
-                f"Model {self.config.model_name} does not belong to {provider}"
-            )
-
-        if model_data.reasoning.levels:
-            reasoning = self.config.reasoning
-
-            if reasoning is None:
-                reasoning = model_data.reasoning.default
-
-                if reasoning is None:
-                    raise ValueError(
-                        f"No default reasoning configured for model {model_data.id}"
-                    )
-
-            elif reasoning not in model_data.reasoning.levels:
-                raise ValueError(
-                    f"{model_data.id} does not support reasoning level {reasoning}"
-                )
-
-            return model_data, reasoning
-
-        if self.config.reasoning is not None:
-            raise ValueError(
-                f"{model_data.id} does not support reasoning"
-            )
-
-        return model_data, None
+        self.reasoning = reasoning
 
     @abstractmethod
     def usage(self, response) -> TokenUsage:
@@ -186,7 +157,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
                             args=call.args
                         ) for call in tool_calls]
                     ))
-                    raise RuntimeError(
+                    raise MaxIterationsError(
                         f"Maximum iteration limit reached: {self.config.max_iters}"
                     )
 

@@ -3,8 +3,10 @@ import inspect
 
 from .config import Config
 
-from .providers.schemas import models_by_provider
+from .providers.schemas import models_by_provider, models_data
 from .providers.llm import create_llm
+from .providers.utils import adjust_reasoning, is_valid_reasoning
+from .utils import RecoverableError, CommandError, ConfigError
 
 class Assistant:
 
@@ -20,27 +22,62 @@ class Assistant:
             config=config
         )
 
-        self.mapping = self._get_command_function_mapping()
+        self.instructions = instructions
+        self.repo_path = repo_path
+        self.config = config
 
+        self.mapping = self._get_command_function_mapping()
         print("Assistant initialized")
 
     @staticmethod
-    def _command(func):
-        func.is_command = True
-        return func
+    def _command(accept_args: bool = False):
+        def wrapper(func):
+            func.is_command = True
+            func.accept_args = accept_args
+            return func
+        return wrapper
 
     def query(self, query: str) -> str:
         query = query.strip()
 
-        if query.startswith("/"):
-            command = query.removeprefix("/")
+        try:
+            if query.startswith("/"):
+                command, args = self._parse_command(query)
 
-            if command in self.mapping:
-                return self.mapping[command](self).strip() + '\n\n'
+                if command in self.mapping:
+                    return self._run_command(
+                        command=command,
+                        args=args
+                    )
 
-            return f"Command '{command}' not found.\n\n"
+                raise CommandError(
+                    f"Command '{command}' not found."
+                )
 
-        return self.llm.run(query)
+            return self.llm.run(query)
+
+        except RecoverableError as e:
+            return str(e)
+
+    def _run_command(self, command: str, args: list[str]) -> str:
+        func = self.mapping[command]
+
+        if args and not func.accept_args:
+            raise CommandError(
+                f"Command {command} does not accept arguments."
+            )
+
+        output = func(self, args) if func.accept_args else func(self)
+        return output.strip()
+
+    @staticmethod
+    def _parse_command(query: str) -> tuple[str, list[str]]:
+        entries = query.split()
+
+        command = entries[0].removeprefix("/")
+        args = entries[1:]
+
+        return command, args
 
     @staticmethod
     def _get_command_functions():
@@ -62,7 +99,7 @@ class Assistant:
             if getattr(method, "is_command", False)
         }
 
-    @_command
+    @_command()
     def usage(self) -> str:
         """
         Shows current token usage information.
@@ -79,18 +116,63 @@ class Assistant:
             f"Cache write tokens: {usage.cache_write_tokens}"
         )
 
-    @_command
-    def model(self) -> str:
+    @_command(accept_args=True)
+    def model(self, args: list[str]) -> str:
         """
-        Shows current model.
+        Shows current model if no model name is provided.
+        Changes model if model name is provided.
         """
+
+        if len(args) == 0:
+            return (
+                f"Current model: {self.llm.model_data.id}\n"
+                f"Effective reasoning: {self.llm.config.reasoning}"
+            )
+
+        if len(args) > 1:
+            raise CommandError(
+                "Invalid arguments."
+            )
+
+        model = args[0]
+        self._change_model(model=model)
 
         return (
-            f"Current model: {self.llm.model_data.id}\n"
-            f"Reasoning: {self.llm.config.reasoning}"
+            f"Successfully changed the model to {model}.\n"
+            f"Reasoning: {self.config.reasoning}"
         )
 
-    @_command
+    def _change_model(self, model: str) -> None:
+        model_data = models_data.models.get(model)
+
+        if model_data is None:
+            raise ConfigError(
+                f"{model} is not a valid model."
+            )
+
+        reasoning = adjust_reasoning(
+            model_data=model_data,
+            reasoning=self.config.reasoning,
+        )
+
+        new_config = self.config.model_copy(
+            update={
+                "model_name": model,
+                "reasoning": reasoning,
+            }
+        )
+
+        new_llm = create_llm(
+            instructions=self.instructions,
+            repo_path=self.repo_path,
+            config=new_config,
+            context=self.llm.context
+        )
+
+        self.config = new_config
+        self.llm = new_llm
+
+    @_command()
     def models(self) -> str:
         """
         Shows available models.
@@ -107,7 +189,40 @@ class Assistant:
 
         return '\n\n'.join(text)
 
-    @_command
+    @_command(accept_args=True)
+    def reasoning_level(self, args: list[str]) -> str:
+        """
+        Shows current reasoning level if no reasoning level is provided.
+        Changes reasoning level if reasoning level is provided.
+        """
+
+        if len(args) == 0:
+            return (
+                f"Current config reasoning: {self.config.reasoning}\n"
+                f"Current effective reasoning: {self.llm.reasoning}"
+            )
+
+        if len(args) > 1:
+            raise CommandError(
+                "Invalid arguments."
+            )
+
+        reasoning = None if args[0] == "null" else args[0]
+
+        if not is_valid_reasoning(
+            reasoning=reasoning,
+            model_data=self.llm.model_data
+        ):
+            raise ConfigError(
+                f"Reasoning level {reasoning} is not valid."
+            )
+
+        self.llm.update_reasoning(reasoning=reasoning)
+        self.config.reasoning = reasoning
+
+        return "Successfully changed the reasoning level."
+
+    @_command()
     def reasoning_levels(self) -> str:
         """
         Shows valid reasoning levels.
@@ -119,7 +234,7 @@ class Assistant:
         else:
             return f"No reasoning levels configured for model {self.llm.model_data.id}."
 
-    @_command
+    @_command()
     def tools(self) -> str:
         """
         Shows available tools.
@@ -132,7 +247,7 @@ class Assistant:
 
         return f"Available tools:\n{tools}"
 
-    @_command
+    @_command()
     def log(self) -> str:
         """
         Logs current session state.
@@ -141,7 +256,7 @@ class Assistant:
         log_output = self.llm.log()
         return log_output.message
 
-    @_command
+    @_command()
     def help(self) -> str:
         """
         Shows command descriptions.
