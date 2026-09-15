@@ -5,7 +5,7 @@ import json
 
 from .utils import Serializable
 from .utils import OutputProtocol
-from .providers.schemas import TokenUsage
+from .providers.schemas import TokenUsage, QueryRecord
 
 @dataclass
 class ToolCallLog(Serializable):
@@ -58,10 +58,14 @@ class LLMFinalCallLog(LLMCallLog):
 @dataclass
 class QueryLog(Serializable):
     query: str
+    query_record: QueryRecord | None = None
     llm_calls: list[LLMCallLog] = field(default_factory=list)
 
     def add_llm_call(self, llm_call: LLMCallLog) -> None:
         self.llm_calls.append(llm_call)
+
+    def set_query_record(self, query_record: QueryRecord) -> None:
+        self.query_record = query_record
 
     def total_usage(self) -> TokenUsage:
         usage = TokenUsage()
@@ -77,6 +81,10 @@ class QueryLog(Serializable):
             "llm_calls": [
                 call.serialize()
                 for call in self.llm_calls
+            ],
+            "query_records": [
+                record.serialize()
+                for record in self.query_records
             ],
             "usage": self.total_usage().serialize(),
         }

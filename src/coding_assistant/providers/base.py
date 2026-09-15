@@ -1,19 +1,21 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from .schemas import models_data, ModelData, ProviderId, TokenUsage, ReasoningLevel
+from .schemas import (models_data, ModelData, ProviderId,
+                      TokenUsage, ReasoningLevel, QueryRecord, MemoryType, Context)
 from ..logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
 from ..config import Config
 from ..tools.content import Tools, ToolCall, ToolOutput
 from ..utils import OutputProtocol
 
-class BaseLLM[ClientT](ABC):
+class BaseLLM[ClientT, ContextT: Context](ABC):
     def __init__(
             self,
             instructions: str,
             repo_path: Path,
             config: Config,
             client: ClientT,
+            context: ContextT,
             provider: ProviderId
     ):
         self.config = config
@@ -34,7 +36,7 @@ class BaseLLM[ClientT](ABC):
             log_path=config.log_path
         )
 
-        self._last_response = None
+        self.context = context
 
     def _resolve_model(
             self,
@@ -100,11 +102,46 @@ class BaseLLM[ClientT](ABC):
     def tool_contract(self):
         ...
 
-    @abstractmethod
     def generate(
             self,
-            inputs,
-            instructions: str
+            inputs: str | list[ToolOutput],
+            instructions: str,
+            memory_type: MemoryType,
+    ):
+        if memory_type == "context":
+            if not isinstance(inputs, str):
+                raise TypeError(
+                    "Context calls require a query string"
+                )
+
+        elif memory_type == "continuation":
+            if not isinstance(inputs, list):
+                raise TypeError(
+                    "Continuation calls require tool outputs"
+                )
+
+            if not self.context.can_continue():
+                raise ValueError(
+                    "Continuation requires a previous response"
+                )
+
+        else:
+            raise ValueError(
+                f"Invalid memory type: {memory_type}"
+            )
+
+        return self._generate(
+            inputs=inputs,
+            instructions=instructions,
+            memory_type=memory_type,
+        )
+
+    @abstractmethod
+    def _generate(
+        self,
+        inputs: str | list[ToolOutput],
+        instructions: str,
+        memory_type: MemoryType,
     ):
         ...
 
@@ -112,12 +149,16 @@ class BaseLLM[ClientT](ABC):
         return self.logger.log()
 
     def run(self, query: str) -> str:
+        self.context.start_query()
+
         query_log = QueryLog(query=query)
+        query_record = QueryRecord(query=query)
 
         try:
             response = self.generate(
                 inputs=query,
-                instructions=self.instructions
+                instructions=self.instructions,
+                memory_type="context"
             )
 
             for i in range(self.config.max_iters):
@@ -131,6 +172,10 @@ class BaseLLM[ClientT](ABC):
                         usage=usage,
                         response=output_text
                     ))
+
+                    query_record.completed = True
+                    query_record.final_response = output_text
+
                     return output_text
 
                 if i == self.config.max_iters - 1:
@@ -150,6 +195,15 @@ class BaseLLM[ClientT](ABC):
                     for tool_call in tool_calls
                 ]
 
+                for tool_output in outputs:
+                    if (
+                        not tool_output.output.is_fail()
+                        and tool_output.change_event is not None
+                    ):
+                        query_record.add_change_event(
+                            tool_output.change_event
+                        )
+
                 query_log.add_llm_call(LLMToolCallLog(
                     usage=usage,
                     tool_calls=[ToolCallLog(
@@ -161,10 +215,14 @@ class BaseLLM[ClientT](ABC):
 
                 response = self.generate(
                     inputs=outputs,
-                    instructions=self.instructions
+                    instructions=self.instructions,
+                    memory_type="continuation"
                 )
 
         finally:
+            self.context.add_record(record=query_record)
+            query_log.set_query_record(query_record=query_record)
+
             self.logger.add_query_log(
                 query_log=query_log
             )

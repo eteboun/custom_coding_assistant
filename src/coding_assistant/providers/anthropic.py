@@ -8,11 +8,11 @@ from anthropic.types import (ToolParam, MessageParam,
                              Message, ToolResultBlockParam)
 
 from .base import BaseLLM
-from .schemas import TokenUsage
+from .schemas import TokenUsage, MemoryType, MessageContext
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
-class AnthropicLLM(BaseLLM[Anthropic]):
+class AnthropicLLM(BaseLLM[Anthropic, MessageContext]):
     def __init__(
             self,
             instructions: str,
@@ -24,16 +24,16 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             repo_path=repo_path,
             config=config,
             provider="anthropic",
-            client=Anthropic()
+            client=Anthropic(),
+            context=MessageContext[MessageParam]()
         )
 
-        self.messages: list[MessageParam] = []
-
     @override
-    def generate(
+    def _generate(
             self,
             inputs: str | list[ToolOutput],
-            instructions: str
+            instructions: str,
+            memory_type: MemoryType
     ) -> Message:
         kwargs = {}
 
@@ -42,26 +42,54 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                         effort=self.reasoning
                     )
 
-        inputs = (
-            inputs
-            if isinstance(inputs, str)
-            else [
-                    self.tool_output_contract(output)
-                    for output in inputs
-                ]
-        )
-        message: MessageParam = {
-            "role": "user",
-            "content": inputs
-        }
-        self.messages.append(message)
+        if isinstance(inputs, list):
+            request_input = [
+                self.tool_output_contract(output)
+                for output in inputs
+            ]
+        else:
+            request_input = inputs
+
+        if memory_type == "continuation":
+            self.context.add_message({
+                "role": "user",
+                "content": request_input
+            })
+
+        elif memory_type == "context":
+            if self.context.query_records:
+                context_text = json.dumps(
+                    [
+                        record.serialize()
+                        for record in self.context.query_records
+                    ],
+                    ensure_ascii=False
+                )
+
+                content = (
+                    "<previous_session_context>\n"
+                    + context_text
+                    + "\n</previous_session_context>\n\n"
+                    + "<current_query>\n"
+                    + request_input
+                    + "\n</current_query>"
+                )
+
+            else:
+                content = request_input
+
+            self.context.add_message({
+                "role": "user",
+                "content": content,
+            })
+
 
         with self.client.messages.stream(
             model=self.model_data.id,
             max_tokens=self.model_data.max_output_tokens,
             system=instructions,
             tools=self.tool_contract(),
-            messages=self.messages,
+            messages=self.context.messages,
             thinking=ThinkingConfigAdaptiveParam(
                 type="adaptive"
             ),
@@ -69,12 +97,11 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         ) as stream:
             response = stream.get_final_message()
 
-        self.messages.append({
+        self.context.add_message({
             "role": "assistant",
             "content": response.content,
         })
 
-        self._last_response = response
         return response
 
     @override

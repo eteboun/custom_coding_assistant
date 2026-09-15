@@ -8,11 +8,11 @@ from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
-from .schemas import TokenUsage
+from .schemas import TokenUsage, MemoryType, IdContext
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
-class OpenAILLM(BaseLLM[OpenAI]):
+class OpenAILLM(BaseLLM[OpenAI, IdContext]):
     def __init__(
             self,
             instructions: str,
@@ -24,14 +24,16 @@ class OpenAILLM(BaseLLM[OpenAI]):
             repo_path=repo_path,
             config=config,
             provider="openai",
-            client=OpenAI()
+            client=OpenAI(),
+            context=IdContext()
         )
 
     @override
-    def generate(
+    def _generate(
             self,
             inputs: str | list[ToolOutput],
-            instructions: str
+            instructions: str,
+            memory_type: MemoryType
     ) -> Response:
         kwargs = {}
 
@@ -40,27 +42,52 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 effort=self.reasoning
             )
 
-        if self._last_response is not None:
-            kwargs["previous_response_id"] = self._last_response.id
+        if isinstance(inputs, list):
+            request_input = [
+                self.tool_output_contract(output)
+                for output in inputs
+            ]
+        else:
+            request_input = inputs
 
-        inputs = (
-            inputs
-            if isinstance(inputs, str)
-            else [
-                    self.tool_output_contract(output)
-                    for output in inputs
+        if memory_type == "continuation":
+            kwargs["previous_response_id"] = (
+                self.context.last_id
+            )
+
+        elif memory_type == "context":
+            if self.context.query_records:
+                context_text = json.dumps(
+                    [
+                        record.serialize()
+                        for record in self.context.query_records
+                    ],
+                    ensure_ascii=False
+                )
+
+                request_input = [
+                    {
+                        "role": "developer",
+                        "content": (
+                                "Previous session context:\n"
+                                + context_text
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": request_input
+                    }
                 ]
-        )
 
         response = self.client.responses.create(
             model=self.model_data.id,
             instructions=instructions,
-            input=inputs,
+            input=request_input,
             tools=self.tool_contract(),
             **kwargs
         )
 
-        self._last_response = response
+        self.context.update_id(id_=response.id)
         return response
 
     @override

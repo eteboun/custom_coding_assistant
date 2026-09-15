@@ -1,13 +1,12 @@
-import subprocess
 import inspect
 
 from collections.abc import Callable
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .schemas import ToolSchema, Parameters
 from .utils import FilePatch, Hunk, Pather
-from ..utils import OutputProtocol
+from ..utils import OutputProtocol, Serializable
 
 class Tools:
 
@@ -26,62 +25,6 @@ class Tools:
 
         self.mapping = self._tool_mapping()
         self.datas = self._tool_datas()
-
-    def _run_docker(self, command: list[str]) -> OutputProtocol:
-        docker_command = [
-            "docker",
-            "run",
-            "--rm",
-
-            "--user", "1000:1000",
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges",
-
-            "--network", "none",
-
-            "--memory", "512m",
-            "--cpus", "1",
-            "--pids-limit", "64",
-
-            "--read-only",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
-
-            "--mount",
-            f"type=bind,source={self.repo_path},target=/workspace,readonly",
-
-            "--workdir", "/workspace",
-
-            "python:3.13-slim",
-            *command,
-        ]
-
-        try:
-            completed = subprocess.run(
-                docker_command,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            return OutputProtocol(
-                status="error",
-                message="Execution timed out",
-            )
-        except FileNotFoundError:
-            return OutputProtocol(
-                status="error",
-                message="Docker is not installed or not in PATH",
-            )
-
-        return OutputProtocol(
-            status="success" if completed.returncode == 0 else "error",
-            content={
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
-                "returncode": completed.returncode,
-            },
-            message="Execution failed" if completed.returncode != 0 else None,
-        )
 
     @staticmethod
     def _tool(
@@ -336,8 +279,16 @@ class Tools:
                             "using only ' ', '-', and '+' line prefixes."
                     ),
                 },
+                "change_summary": {
+                    "type": "string",
+                    "description": (
+                            "A concise semantic summary of what this mutation "
+                            "is intended to change and why. Describe behavior "
+                            "or state changes, not patch mechanics."
+                    )
+                }
             },
-            required=["patch"],
+            required=["patch", "change_summary"],
             additional_properties=False,
         ),
         strict=True,
@@ -655,8 +606,16 @@ class Tools:
                     "type": "string",
                     "description": "Repository-relative path for the directory to be deleted.",
                 },
+                "change_summary": {
+                    "type": "string",
+                    "description": (
+                            "A concise semantic summary of what this mutation "
+                            "is intended to change and why. Describe the purpose "
+                            "of removing the directory, not the deletion mechanics."
+                    )
+                }
             },
-            required=["path"],
+            required=["path", "change_summary"],
             additional_properties=False,
         ),
     )
@@ -681,44 +640,41 @@ class Tools:
             content=path,
         )
 
-    @_tool(
-        description=(
-                "Runs a command in an isolated Docker container "
-                "with the repository as the working directory."
-        ),
-        parameters=Parameters(
-            properties={
-                "command": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                    },
-                    "description": (
-                            "Command and arguments to execute, provided as a list. "
-                            "Example: ['python', '-m', 'pytest']."
-                    ),
-                },
-            },
-            required=["command"],
-            additional_properties=False,
-        ),
-    )
-    def run_command(self, command: list[str]) -> OutputProtocol:
-        return self._run_docker(
-            command=command
-        )
+@dataclass(frozen=True)
+class ChangeEvent(Serializable):
+    summary: str
+    tool: str
+
+    def serialize(self) -> dict:
+        return {
+            "summary": self.summary,
+            "tool": self.tool
+        }
 
 @dataclass(frozen=True)
 class ToolOutput:
     name: str
     call_id: str
-    output: OutputProtocol
 
-@dataclass(frozen=True)
+    output: OutputProtocol
+    change_event: ChangeEvent | None = None
+
+@dataclass
 class ToolCall:
     name: str
     args: dict
     call_id: str
+
+    change_event: ChangeEvent | None = field(init=False, default=None)
+
+    def __post_init__(self):
+        summary = self.args.pop("change_summary", None)
+
+        if summary is not None:
+            self.change_event = ChangeEvent(
+                tool=self.name,
+                summary=summary
+            )
 
     def execute(self, tools: Tools) -> ToolOutput:
         if self.name not in tools.mapping:
@@ -732,5 +688,6 @@ class ToolCall:
         return ToolOutput(
             name=self.name,
             call_id=self.call_id,
-            output=output
+            output=output,
+            change_event=self.change_event
         )

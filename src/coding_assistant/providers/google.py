@@ -6,11 +6,11 @@ from google import genai
 from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
-from .schemas import TokenUsage
+from .schemas import TokenUsage, MemoryType, IdContext
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 
-class GeminiLLM(BaseLLM[genai.Client]):
+class GeminiLLM(BaseLLM[genai.Client, IdContext]):
     def __init__(
             self,
             instructions: str,
@@ -22,14 +22,16 @@ class GeminiLLM(BaseLLM[genai.Client]):
             repo_path=repo_path,
             config=config,
             provider="google",
-            client=genai.Client()
+            client=genai.Client(),
+            context=IdContext()
         )
 
     @override
-    def generate(
+    def _generate(
             self,
             inputs: str | list[ToolOutput],
-            instructions: str
+            instructions: str,
+            memory_type: MemoryType
     ) -> Interaction:
         kwargs = {}
 
@@ -38,27 +40,43 @@ class GeminiLLM(BaseLLM[genai.Client]):
                 "thinking_level": self.reasoning
             }
 
-        if self._last_response is not None:
-            kwargs["previous_interaction_id"] = self._last_response.id
+        if isinstance(inputs, list):
+            request_input = [
+                self.tool_output_contract(output)
+                for output in inputs
+            ]
+        else:
+            request_input = inputs
 
-        inputs = (
-            inputs
-            if isinstance(inputs, str)
-            else [
-                    self.tool_output_contract(output)
-                    for output in inputs
-                ]
-        )
+        if memory_type == "continuation":
+            kwargs["previous_interaction_id"] = self.context.last_id
+
+        elif memory_type == "context":
+            if self.context.query_records:
+                context_text = json.dumps(
+                    [
+                        record.serialize()
+                        for record in self.context.query_records
+                    ],
+                    ensure_ascii=False,
+                )
+
+                request_input = (
+                        "Previous session context:\n"
+                        + context_text
+                        + "\n\nCurrent user query:\n"
+                        + request_input
+                )
 
         response = self.client.interactions.create(
             model=self.model_data.id,
-            input=inputs,
+            input=request_input,
             system_instruction=instructions,
             tools=self.tool_contract(),
             **kwargs
         )
 
-        self._last_response = response
+        self.context.update_id(id_=response.id)
         return response
 
     @override

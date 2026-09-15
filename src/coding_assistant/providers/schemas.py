@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
-from typing import Literal, Any, Self
+from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from typing import Literal, Any, Self, override
 
+from ..tools.content import ChangeEvent
 from ..utils import Serializable
 from ..config import models_json
 
@@ -15,6 +18,10 @@ ProviderId = Literal[
 ReasoningLevel = Literal[
                     "none", "minimal", "low", "medium", "high", "xhigh", "max"
                ]
+
+MemoryType = Literal[
+    "continuation", "context"
+]
 
 class Reasoning(BaseModel):
     levels: list[ReasoningLevel]
@@ -115,6 +122,71 @@ class TokenUsage(BaseModel, Serializable):
             total=self.cache_write_tokens,
             value=other.cache_write_tokens
         )
+
+@dataclass
+class QueryRecord(Serializable):
+    query: str
+    change_events: list[ChangeEvent] = field(default_factory=list)
+    final_response: str | None = None
+    completed: bool = False
+
+    def serialize(self) -> dict:
+        return {
+            "query": self.query,
+            "final_response": self.final_response,
+            "change_events": [
+                event.serialize()
+                for event in self.change_events
+            ]
+        }
+
+    def add_change_event(self, change_event: ChangeEvent) -> None:
+        self.change_events.append(change_event)
+
+@dataclass
+class Context(ABC):
+    query_records: list[QueryRecord] = field(default_factory=list)
+
+    def add_record(self, record: QueryRecord) -> None:
+        self.query_records.append(record)
+
+    @abstractmethod
+    def start_query(self) -> None:
+        ...
+
+    @abstractmethod
+    def can_continue(self) -> bool:
+        ...
+
+@dataclass
+class IdContext(Context):
+    last_id: str | None = None
+
+    @override
+    def start_query(self) -> None:
+        self.last_id = None
+
+    @override
+    def can_continue(self) -> bool:
+        return self.last_id is not None
+
+    def update_id(self, id_: str) -> None:
+        self.last_id = id_
+
+@dataclass
+class MessageContext[T](Context):
+    messages: list[T] = field(default_factory=list)
+
+    @override
+    def start_query(self) -> None:
+        self.messages.clear()
+
+    @override
+    def can_continue(self) -> bool:
+        return bool(self.messages)
+
+    def add_message(self, message: T) -> None:
+        self.messages.append(message)
 
 models_data = _load_models()
 
