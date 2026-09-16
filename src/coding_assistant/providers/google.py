@@ -116,7 +116,7 @@ class GeminiLLM(BaseLLM[genai.Client, IdContext]):
                 args=dict(step.arguments),
             )
             for step in response.steps
-            if step.type == "function_call"
+            if step.operation == "function_call"
         ]
 
     @override

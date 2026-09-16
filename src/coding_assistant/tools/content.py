@@ -1,18 +1,22 @@
 import inspect
 
 from collections.abc import Callable
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
-from .schemas import ToolSchema, Parameters
+from .event import ToolEvent, ToolOutput, UpdateScope, MutationType
 from .workspace import Workspace
-from ..utils import OutputProtocol, Serializable, ToolUsageError
+from .schemas import ToolSchema, Parameters
+from ..utils import OutputProtocol, ToolUsageError
 
 @dataclass(frozen=True)
-class ToolOutput:
-    output: OutputProtocol
-    files: tuple[str, ...] = ()
-    mutation: bool = False
+class Tool:
+    func: Callable
+    update_scope: UpdateScope | None = None
+    update_when: tuple[MutationType, ...] = ()
+
+    def execute(self, args: dict) -> ToolOutput:
+        return self.func(**args)
 
 class Tools:
 
@@ -27,25 +31,27 @@ class Tools:
             blocked_files=blocked_files,
             blocked_dirs=blocked_dirs
         )
-        self.repo_path = repo_path
 
         self.mapping = self._tool_mapping()
-        self.datas = self._tool_datas()
+        self.data_mapping = self._tool_data_mapping()
 
     @staticmethod
     def _tool(
             description: str,
             parameters: Parameters,
-            strict: bool = False
+            strict: bool = False,
+            update_scope: UpdateScope | None = None,
+            update_when: tuple[MutationType, ...] = ()
     ) -> Callable:
 
         def decorator(func):
-
             tool_data = ToolSchema.from_func(
                 func=func,
                 description=description,
                 parameters=parameters,
-                strict=strict
+                strict=strict,
+                update_scope=update_scope,
+                update_when=update_when
             )
 
             func.is_tool = True
@@ -64,19 +70,21 @@ class Tools:
 
         return funcs
 
-    def _tool_mapping(self) -> dict[str, Callable]:
-        tools = self._tools()
+    def _tool_mapping(self) -> dict[str, Tool]:
         return {
-            tool.__name__: tool
-            for tool in tools
+            tool_data.name: Tool(
+                func=func,
+                update_when=tool_data.update_when,
+                update_scope=tool_data.update_scope
+            )
+            for func, tool_data in self.data_mapping
         }
 
-    def _tool_datas(self) -> list[ToolSchema]:
-        tools = self._tools()
-        return [
-            tool.tool_data
-            for tool in tools
-        ]
+    def _tool_data_mapping(self) -> dict[Callable, ToolSchema]:
+        return {
+            tool: tool.tool_data
+            for tool in self._tools()
+        }
 
     def tools(self) -> list[str]:
         return [
@@ -107,7 +115,8 @@ class Tools:
             },
             required=["path", "start_line", "end_line"],
             additional_properties=False
-        )
+        ),
+
     )
     def read_file(
         self,
@@ -115,14 +124,10 @@ class Tools:
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> ToolOutput:
-        result = self.workspace.read_file(
+        return self.workspace.read_file(
             path=path,
             start_line=start_line,
             end_line=end_line
-        )
-        return ToolOutput(
-            output=result.output,
-            files=result.files
         )
 
     @_tool(
@@ -141,10 +146,8 @@ class Tools:
         ),
     )
     def list_directory(self, path: str) -> ToolOutput:
-        result = self.workspace.list_directory(path=path)
-        return ToolOutput(
-            output=result.output,
-            files=result.files
+        return self.workspace.list_directory(
+            path=path
         )
 
     @_tool(
@@ -178,13 +181,9 @@ class Tools:
             pattern: str | None = None,
             max_results: int = 100
     ) -> ToolOutput:
-        result = self.workspace.search_files(
+        return self.workspace.search_files(
             pattern=pattern,
             max_results=max_results
-        )
-        return ToolOutput(
-            output=result.output,
-            files=result.files
         )
 
     @_tool(
@@ -213,14 +212,10 @@ class Tools:
                     context_lines: int = 2,
                     max_output_lines: int = 100
                     ) -> ToolOutput:
-        result = self.workspace.search_text(
+        return self.workspace.search_text(
             text=query,
             context_lines=context_lines,
             max_output_lines=max_output_lines
-        )
-        return ToolOutput(
-            output=result.output,
-            files=result.files
         )
 
     @_tool(
@@ -282,13 +277,8 @@ class Tools:
             self,
             patch: str,
     ) -> ToolOutput:
-        result = self.workspace.apply_patch(
+        return self.workspace.apply_patch(
             patch=patch
-        )
-        return ToolOutput(
-            output=result.output,
-            files=result.files,
-            mutation=True
         )
 
     @_tool(
@@ -313,11 +303,8 @@ class Tools:
         ),
     )
     def delete_dir(self, path: str) -> ToolOutput:
-        result = self.workspace.delete_dir(path=path)
-        return ToolOutput(
-            output=result.output,
-            files=result.files,
-            mutation=True
+        return self.workspace.delete_dir(
+            path=path
         )
 
     @_tool(
@@ -333,43 +320,26 @@ class Tools:
         ),
     )
     def repo_tree(self) -> ToolOutput:
-        result = self.workspace.repo_tree()
-        return ToolOutput(
-            output=result.output,
-            files=result.files
-        )
+        return self.workspace.repo_tree()
 
-@dataclass(frozen=True)
-class ChangeEvent(Serializable):
-    summary: str
-    tool: str
-
-    def serialize(self) -> dict:
-        return {
-            "summary": self.summary,
-            "tool": self.tool
-        }
-
-@dataclass
-class ToolEvent:
-    name: str
-    args: dict
-    id: str
-
-    output: ToolOutput | None = None
-
-    def execute(self, tools: Tools) -> None:
-        if self.name not in tools.mapping:
+    def execute_event(self, event: ToolEvent) -> ToolOutput:
+        if event.name not in self.mapping:
             output = ToolOutput(
                 output=OutputProtocol(
                     status="error",
-                    message=f"Tool {self.name} not found"
+                    message=f"Tool {event.name} not found"
                 )
             )
 
         else:
             try:
-                output = tools.mapping[self.name](**self.args)
+                tool = self.mapping[event.name]
+                output = tool.execute(
+                    **event.args
+                )
+
+                event.update_scope = tool.update_scope
+                event.update_when = tool.update_when
 
             except ToolUsageError as e:
                 output = ToolOutput(
@@ -379,5 +349,5 @@ class ToolEvent:
                     )
                 )
 
-        self.output = output
+        event.output = output
         return output

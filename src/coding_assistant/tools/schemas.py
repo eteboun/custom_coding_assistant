@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Self
+from typing import Self, Literal
+
+from .event import UpdateScope, MutationType
 
 @dataclass(frozen=True)
 class Parameters:
@@ -17,13 +19,17 @@ class ToolSchema:
     description: str
     parameters: Parameters
     strict: bool
+    update_scope: UpdateScope | None
+    update_when: tuple[MutationType, ...]
 
     @classmethod
     def from_func(cls,
                   func: Callable,
                   description: str,
                   parameters: Parameters,
-                  strict: bool
+                  strict: bool,
+                  update_scope: UpdateScope | None,
+                  update_when: tuple[MutationType, ...]
                   ) -> Self:
         name = func.__name__
 
@@ -31,5 +37,21 @@ class ToolSchema:
             name=name,
             description=description,
             parameters=parameters,
-            strict=strict
+            strict=strict,
+            update_scope=update_scope,
+            update_when=update_when
         )
+
+Operation = Literal["update", "add", "delete"]
+
+@dataclass(frozen=True)
+class FilePatch:
+    operation: Operation
+    path: str
+    lines: list[str]
+
+@dataclass(frozen=True)
+class Hunk:
+    start: int
+    end: int
+    new_text: str

@@ -8,7 +8,7 @@ from .utils import OutputProtocol
 from .providers.schemas import TokenUsage, QueryRecord
 
 @dataclass
-class ToolCallLog(Serializable):
+class ToolEventLog(Serializable):
     name: str
     args: dict
     output: OutputProtocol | None = None
@@ -33,15 +33,15 @@ class LLMCallLog(Serializable):
         return self.usage.serialize()
 
 @dataclass
-class LLMToolCallLog(LLMCallLog):
-    tool_calls: list[ToolCallLog]
+class LLMToolEventLog(LLMCallLog):
+    events: list[ToolEventLog]
 
     def serialize(self) -> dict:
         return {
             "usage": super().serialize(),
             "tool_calls": [
                 call.serialize()
-                for call in self.tool_calls
+                for call in self.events
             ],
         }
 

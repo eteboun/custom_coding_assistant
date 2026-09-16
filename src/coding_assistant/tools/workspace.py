@@ -1,30 +1,11 @@
 import subprocess
 import json
 from pathlib import Path
-from typing import ClassVar, Literal
-from dataclasses import dataclass, field
+from typing import ClassVar
 
+from .schemas import Hunk, FilePatch
+from .event import ToolOutput, Mutation
 from ..utils import OutputProtocol, ToolUsageError, ToolEnvironmentError
-
-Operation = Literal["update", "add", "delete"]
-
-@dataclass(frozen=True)
-class FilePatch:
-    operation: Operation
-    path: str
-    lines: list[str]
-
-@dataclass(frozen=True)
-class Hunk:
-    start: int
-    end: int
-    new_text: str
-
-@dataclass(frozen=True)
-class PathOperation:
-    output: OutputProtocol
-    files: tuple[str, ...] = field(default_factory=tuple)
-
 
 class Workspace:
 
@@ -361,7 +342,7 @@ class Workspace:
             self,
             pattern: str | None = None,
             max_results: int = 100
-    ) -> PathOperation:
+    ) -> ToolOutput:
         if max_results < 1:
             raise ToolUsageError(
                 "max_results must be at least 1."
@@ -400,7 +381,7 @@ class Workspace:
 
         files.sort()
 
-        return PathOperation(
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content=files,
@@ -413,7 +394,7 @@ class Workspace:
             text: str,
             context_lines: int = 2,
             max_output_lines: int = 100
-    ) -> PathOperation:
+    ) -> ToolOutput:
 
         cmd = [
             "rg",
@@ -464,7 +445,7 @@ class Workspace:
                 if lines >= max_output_lines:
                     break
 
-            return PathOperation(
+            return ToolOutput(
                 output=OutputProtocol(
                     status="success",
                     content="\n".join(findings)
@@ -473,7 +454,7 @@ class Workspace:
             )
 
         if result.returncode == 1:
-            return PathOperation(
+            return ToolOutput(
                 output=OutputProtocol(
                     status="success",
                     content="No match found"
@@ -484,7 +465,7 @@ class Workspace:
             f"ripgrep failed: {result.stderr.strip()}"
         )
 
-    def repo_tree(self) -> PathOperation:
+    def repo_tree(self) -> ToolOutput:
         lines: list[str] = []
         files: list[str] = []
 
@@ -523,7 +504,7 @@ class Workspace:
 
         files.sort()
 
-        return PathOperation(
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content="\n".join(lines),
@@ -531,7 +512,7 @@ class Workspace:
             files=tuple(files)
         )
 
-    def list_directory(self, path: str) -> PathOperation:
+    def list_directory(self, path: str) -> ToolOutput:
         resolved_dir = self._resolve_dir(path=path)
 
         entries = sorted(
@@ -540,7 +521,7 @@ class Workspace:
             if self._is_allowed_path(e)
         )
 
-        return PathOperation(
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content=entries
@@ -548,7 +529,7 @@ class Workspace:
             files=tuple(entries)
         )
 
-    def delete_dir(self, path: str) -> PathOperation:
+    def delete_dir(self, path: str) -> ToolOutput:
         resolved_dir = self._resolve_dir(path=path)
         full_path = resolved_dir.content
 
@@ -561,12 +542,18 @@ class Workspace:
         except OSError as e:
             raise ToolUsageError(str(e)) from e
 
-        return PathOperation(
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content=relative_path
             ),
-            files=(relative_path,)
+            files=(relative_path,),
+            mutations=(
+                Mutation(
+                    path=relative_path,
+                    type="delete"
+                ),
+            )
         )
 
     def read_file(
@@ -574,7 +561,7 @@ class Workspace:
         path: str,
         start_line: int | None = None,
         end_line: int | None = None,
-    ) -> PathOperation:
+    ) -> ToolOutput:
         resolved_file = self._resolve_file(path=path)
         full_path = resolved_file.content
 
@@ -599,7 +586,7 @@ class Workspace:
                 f"{num} | {line}"
             )
 
-        return PathOperation(
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content="".join(numbered_lines)
@@ -610,7 +597,7 @@ class Workspace:
     def apply_patch(
             self,
             patch: str,
-    ) -> PathOperation:
+    ) -> ToolOutput:
         patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
         file_patches = self._parse_patch(patch)
@@ -690,15 +677,25 @@ class Workspace:
             ) as f:
                 f.write(content)
 
-        files = tuple(sorted({
-            Path(patch.path).as_posix()
-            for patch in file_patches
-        }))
+        files = tuple(sorted(
+            {
+                Path(patch.path).as_posix()
+                for patch in file_patches
+            }
+        ))
 
-        return PathOperation(
+        mutations = tuple(
+            Mutation(
+                path=patch.path,
+                type=patch.operation
+            ) for patch in file_patches
+        )
+
+        return ToolOutput(
             output=OutputProtocol(
                 status="success",
                 content="Successfully applied patch."
             ),
-            files=files
+            files=files,
+            mutations=mutations
         )

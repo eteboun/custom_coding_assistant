@@ -3,10 +3,11 @@ from abc import ABC, abstractmethod
 
 from .utils import resolve_reasoning, resolve_model
 from .schemas import (ProviderId, TokenUsage, ReasoningLevel,
-                      QueryRecord, MemoryType, Context)
-from ..logger import Logger, QueryLog, LLMToolCallLog, LLMFinalCallLog, ToolCallLog
+                      QueryRecord, MemoryType, Context, Mutation)
+from ..logger import Logger, QueryLog, LLMToolEventLog, LLMFinalCallLog, ToolEventLog
 from ..config import Config
-from ..tools.content import Tools, ToolCall, ToolOutput
+from ..tools.content import Tools, ToolEvent
+from ..tools.schemas import ToolOutput
 from ..utils import OutputProtocol, MaxIterationsError
 
 class BaseLLM[ClientT, ContextT: Context](ABC):
@@ -62,7 +63,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
         ...
 
     @abstractmethod
-    def tool_call_contract(self, response) -> list[ToolCall]:
+    def tool_event_contract(self, response) -> list[ToolEvent]:
         ...
 
     @abstractmethod
@@ -72,6 +73,51 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
     @abstractmethod
     def tool_contract(self):
         ...
+
+    def execute_tool_events(
+            self,
+            events: list[ToolEvent]
+    ) -> list[ToolOutput]:
+        return [
+            event.execute(self.tools)
+            for event in events
+        ]
+
+    @staticmethod
+    def create_llm_tool_event_log(
+            events: list[ToolEvent],
+            usage: TokenUsage
+    ) -> LLMToolEventLog:
+        tool_events: list[ToolEventLog] = []
+        for event in events:
+
+            tool_events.append(ToolEventLog(
+                name=event.name,
+                args=event.args,
+                output=event.output.output
+            ))
+
+        return LLMToolEventLog(
+            events=tool_events,
+            usage=usage
+        )
+
+    @staticmethod
+    def save_mutations(
+            query_record: QueryRecord,
+            events: list[ToolEvent]
+    ) -> None:
+        for event in events:
+            event_output = event.output
+
+            if (
+                    not event_output.output.is_fail()
+                    and event_output.mutation
+            ):
+                query_record.add_mutation(Mutation(
+                    name=event.name,
+                    summary=event.mutation_summary
+                ))
 
     def generate(
             self,
@@ -133,10 +179,10 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
             )
 
             for i in range(self.config.max_iters):
-                tool_calls = self.tool_call_contract(response)
+                tool_events = self.tool_event_contract(response)
                 usage = self.usage(response=response)
 
-                if not tool_calls:
+                if not tool_events:
                     output_text = self.output_text(response)
 
                     query_log.add_llm_call(LLMFinalCallLog(
@@ -150,38 +196,24 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
                     return output_text
 
                 if i == self.config.max_iters - 1:
-                    query_log.add_llm_call(LLMToolCallLog(
-                        usage=usage,
-                        tool_calls=[ToolCallLog(
-                            name=call.name,
-                            args=call.args
-                        ) for call in tool_calls]
+                    query_log.add_llm_call(self.create_llm_tool_event_log(
+                        events=tool_events,
+                        usage=usage
                     ))
                     raise MaxIterationsError(
                         f"Maximum iteration limit reached: {self.config.max_iters}"
                     )
 
-                outputs = [
-                    tool_call.execute(self.tools)
-                    for tool_call in tool_calls
-                ]
+                outputs = self.execute_tool_events(tool_events)
 
-                for tool_output in outputs:
-                    if (
-                        not tool_output.output.is_fail()
-                        and tool_output.change_event is not None
-                    ):
-                        query_record.add_change_event(
-                            tool_output.change_event
-                        )
+                self.save_mutations(
+                    query_record=query_record,
+                    events=tool_events
+                )
 
-                query_log.add_llm_call(LLMToolCallLog(
-                    usage=usage,
-                    tool_calls=[ToolCallLog(
-                        name=call.name,
-                        args=call.args,
-                        output=tool_output.output
-                    ) for call, tool_output in zip(tool_calls, outputs)]
+                query_log.add_llm_call(self.create_llm_tool_event_log(
+                    events=tool_events,
+                    usage=usage
                 ))
 
                 response = self.generate(
