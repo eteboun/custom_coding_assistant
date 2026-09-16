@@ -2,11 +2,17 @@ import inspect
 
 from collections.abc import Callable
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .schemas import ToolSchema, Parameters
-from .utils import FilePatch, Hunk, Pather
+from .workspace import Workspace
 from ..utils import OutputProtocol, Serializable, ToolUsageError
+
+@dataclass(frozen=True)
+class ToolOutput:
+    output: OutputProtocol
+    files: tuple[str, ...] = ()
+    mutation: bool = False
 
 class Tools:
 
@@ -16,7 +22,7 @@ class Tools:
                  blocked_dirs: list[str]
                  ) -> None:
 
-        self.pather = Pather(
+        self.workspace = Workspace(
             repo_path=repo_path,
             blocked_files=blocked_files,
             blocked_dirs=blocked_dirs
@@ -108,34 +114,15 @@ class Tools:
         path: str,
         start_line: int | None = None,
         end_line: int | None = None,
-    ) -> OutputProtocol:
-        resolved_file = self.pather.resolve_file(path=path)
-
-        if resolved_file.is_fail():
-            return resolved_file
-
-        full_path = resolved_file.content
-
-        with open(full_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-        start = start_line - 1 if start_line is not None else 0
-        end = end_line if end_line is not None else len(lines)
-
-        numbered_line_group = zip(
-            range(start + 1, end + 1),
-            lines[start:end]
+    ) -> ToolOutput:
+        result = self.workspace.read_file(
+            path=path,
+            start_line=start_line,
+            end_line=end_line
         )
-
-        numbered_lines = []
-        for num, line in numbered_line_group:
-            numbered_lines.append(
-                f"{num} | {line}"
-            )
-
-        return OutputProtocol(
-            status="success",
-            content="".join(numbered_lines)
+        return ToolOutput(
+            output=result.output,
+            files=result.files
         )
 
     @_tool(
@@ -153,21 +140,11 @@ class Tools:
             additional_properties=False,
         ),
     )
-    def list_directory(self, path: str) -> OutputProtocol:
-        resolved_dir = self.pather.resolve_dir(path=path)
-
-        if resolved_dir.is_fail():
-            return resolved_dir
-
-        entries = sorted(
-            e.name
-            for e in resolved_dir.content.iterdir()
-            if self.pather.is_allowed_path(e)
-        )
-
-        return OutputProtocol(
-            status="success",
-            content=entries,
+    def list_directory(self, path: str) -> ToolOutput:
+        result = self.workspace.list_directory(path=path)
+        return ToolOutput(
+            output=result.output,
+            files=result.files
         )
 
     @_tool(
@@ -189,21 +166,25 @@ class Tools:
                     "type": "integer",
                     "description": "Maximum number of matching paths to return.",
                     "minimum": 1,
-                    "default": 100,
-                },
+                    "default": 100
+                }
             },
             required=[],
-            additional_properties=False,
-        ),
+            additional_properties=False
+        )
     )
     def search_files(
             self,
             pattern: str | None = None,
-            max_results: int = 100,
-    ) -> OutputProtocol:
-        return self.pather.search_files(
+            max_results: int = 100
+    ) -> ToolOutput:
+        result = self.workspace.search_files(
             pattern=pattern,
             max_results=max_results
+        )
+        return ToolOutput(
+            output=result.output,
+            files=result.files
         )
 
     @_tool(
@@ -231,11 +212,15 @@ class Tools:
                     query: str,
                     context_lines: int = 2,
                     max_output_lines: int = 100
-                    ) -> OutputProtocol:
-        return self.pather.search_text(
+                    ) -> ToolOutput:
+        result = self.workspace.search_text(
             text=query,
             context_lines=context_lines,
             max_output_lines=max_output_lines
+        )
+        return ToolOutput(
+            output=result.output,
+            files=result.files
         )
 
     @_tool(
@@ -296,301 +281,15 @@ class Tools:
     def apply_patch(
             self,
             patch: str,
-    ) -> OutputProtocol:
-        patch = patch.replace("\r\n", "\n").replace("\r", "\n")
-
-        file_patches = self._parse_patch(patch)
-
-        pending_writes: dict[Path, str] = {}
-        pending_deletes: set[Path] = set()
-
-        for file_patch in file_patches:
-            if file_patch.operation == "update":
-                resolved = self.pather.resolve_file(file_patch.path)
-
-                if resolved.is_fail():
-                    return resolved
-
-                full_path = resolved.content
-
-                with open(full_path, "r", encoding="utf-8", newline="") as f:
-                    initial_content = f.read()
-
-                try:
-                    new_content = self._apply_update(
-                        initial_content,
-                        file_patch.lines,
-                    )
-
-                except ToolUsageError as e:
-                    raise ToolUsageError(
-                        f"{file_patch.path}: {e}"
-                    ) from e
-
-                pending_writes[full_path] = new_content
-
-            elif file_patch.operation == "delete":
-                resolved = self.pather.resolve_file(file_patch.path)
-
-                if resolved.is_fail():
-                    return resolved
-
-                full_path = resolved.content
-
-                if file_patch.lines:
-                    return OutputProtocol(
-                        status="error",
-                        message=(
-                            f"{file_patch.path}: Delete File "
-                            "must not contain patch content."
-                        ),
-                    )
-
-                pending_deletes.add(full_path)
-
-            elif file_patch.operation == "add":
-                resolved = self.pather.resolve_path(file_patch.path)
-
-                if resolved.is_fail():
-                    return resolved
-
-                full_path = resolved.content
-
-                if full_path.exists():
-                    return OutputProtocol(
-                        status="error",
-                        message=f"{file_patch.path}: File already exists.",
-                    )
-
-                try:
-                    new_content = self._parse_added_file(
-                        file_patch.lines
-                    )
-                except ValueError as e:
-                    return OutputProtocol(
-                        status="error",
-                        message=f"{file_patch.path}: {e}",
-                    )
-
-                pending_writes[full_path] = new_content
-
-        if pending_deletes & pending_writes.keys():
-            return OutputProtocol(
-                status="error",
-                message="A file cannot be both written and deleted.",
-            )
-
-        for path in pending_deletes:
-            path.unlink()
-
-        for path, content in pending_writes.items():
-            path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(
-                    path,
-                    "w",
-                    encoding="utf-8",
-                    newline="",
-            ) as f:
-                f.write(content)
-
-        return OutputProtocol(
-            status="success",
-            content="Successfully applied patch.",
+    ) -> ToolOutput:
+        result = self.workspace.apply_patch(
+            patch=patch
         )
-
-    @staticmethod
-    def _parse_patch(patch: str) -> list[FilePatch]:
-        lines = patch.split("\n")
-
-        if not lines or lines[0] != "*** Begin Patch":
-            raise ToolUsageError("Patch must start with '*** Begin Patch'.")
-
-        if lines[-1] != "*** End Patch":
-            raise ToolUsageError("Patch must end with '*** End Patch'.")
-
-        result: list[FilePatch] = []
-        current: FilePatch | None = None
-
-        for line in lines[1:-1]:
-            if line.startswith("*** Update File: "):
-                if current is not None:
-                    result.append(current)
-
-                current = FilePatch(
-                    operation="update",
-                    path=line.removeprefix("*** Update File: ").strip(),
-                    lines=[],
-                )
-
-            elif line.startswith("*** Add File: "):
-                if current is not None:
-                    result.append(current)
-
-                current = FilePatch(
-                    operation="add",
-                    path=line.removeprefix("*** Add File: ").strip(),
-                    lines=[],
-                )
-
-            elif line.startswith("*** Delete File: "):
-                if current is not None:
-                    result.append(current)
-
-                current = FilePatch(
-                    operation="delete",
-                    path=line.removeprefix("*** Delete File: ").strip(),
-                    lines=[],
-                )
-
-            elif line.startswith("*** "):
-                raise ToolUsageError(
-                    f"Unsupported patch metadata: {line}"
-                )
-
-            else:
-                if current is None:
-                    if not line:
-                        continue
-
-                    raise ToolUsageError(
-                        "Patch content appears before a file operation."
-                    )
-
-                current.lines.append(line)
-
-        if current is not None:
-            result.append(current)
-
-        if not result:
-            raise ToolUsageError("Patch contains no file operations.")
-
-        paths = [file_patch.path for file_patch in result]
-
-        if len(paths) != len(set(paths)):
-            raise ToolUsageError(
-                "Each file may appear only once in a patch."
-            )
-
-        return result
-
-    @staticmethod
-    def _apply_update(
-            initial_content: str,
-            lines: list[str],
-    ) -> str:
-        newline = "\r\n" if "\r\n" in initial_content else "\n"
-
-        raw_hunks: list[list[str]] = []
-        current: list[str] = []
-
-        for line in lines:
-            if line.startswith("@@"):
-                if current:
-                    raw_hunks.append(current)
-                    current = []
-                continue
-
-            if line == "*** End of File":
-                continue
-
-            if not line.startswith((" ", "-", "+")):
-                if not line:
-                    continue
-
-                raise ToolUsageError(
-                    f"Invalid patch line: {line!r}"
-                )
-
-            current.append(line)
-
-        if current:
-            raw_hunks.append(current)
-
-        if not raw_hunks:
-            raise ToolUsageError("Update contains no hunks.")
-
-        hunks: list[Hunk] = []
-
-        for index, raw_hunk in enumerate(raw_hunks):
-            old_lines = [
-                line[1:]
-                for line in raw_hunk
-                if line.startswith((" ", "-"))
-            ]
-
-            new_lines = [
-                line[1:]
-                for line in raw_hunk
-                if line.startswith((" ", "+"))
-            ]
-
-            if not old_lines:
-                raise ToolUsageError(
-                    f"Hunk {index} contains no existing text."
-                )
-
-            old_text = newline.join(old_lines)
-            new_text = newline.join(new_lines)
-
-            first = initial_content.find(old_text)
-
-            if first == -1:
-                raise ToolUsageError(
-                    f"Hunk {index} target was not found."
-                )
-
-            second = initial_content.find(
-                old_text,
-                first + 1,
-            )
-
-            if second != -1:
-                raise ToolUsageError(
-                    f"Hunk {index} target is ambiguous."
-                )
-
-            hunks.append(
-                Hunk(
-                    start=first,
-                    end=first + len(old_text),
-                    new_text=new_text,
-                )
-            )
-
-        hunks.sort(key=lambda hunk: hunk.start)
-
-        for current_, next_hunk in zip(hunks, hunks[1:]):
-            if next_hunk.start < current_.end:
-                raise ToolUsageError("Update hunks overlap.")
-
-        content = initial_content
-
-        for hunk in reversed(hunks):
-            content = (
-                    content[:hunk.start]
-                    + hunk.new_text
-                    + content[hunk.end:]
-            )
-
-        return content
-
-    @staticmethod
-    def _parse_added_file(lines: list[str]) -> str:
-        content: list[str] = []
-
-        for line in lines:
-            if not line:
-                continue
-
-            if not line.startswith("+"):
-                raise ToolUsageError(
-                    "Every Add File content line must start with '+'."
-                )
-
-            content.append(line[1:])
-
-        return "\n".join(content)
+        return ToolOutput(
+            output=result.output,
+            files=result.files,
+            mutation=True
+        )
 
     @_tool(
         description="Delete an empty directory from the repository.",
@@ -613,22 +312,12 @@ class Tools:
             additional_properties=False,
         ),
     )
-    def delete_dir(self, path: str) -> OutputProtocol:
-        resolved_dir = self.pather.resolve_dir(path=path)
-
-        if resolved_dir.is_fail():
-            return resolved_dir
-
-        full_path = resolved_dir.content
-
-        try:
-            full_path.rmdir()
-        except OSError as e:
-            raise ToolUsageError(str(e)) from e
-
-        return OutputProtocol(
-            status="success",
-            content=path,
+    def delete_dir(self, path: str) -> ToolOutput:
+        result = self.workspace.delete_dir(path=path)
+        return ToolOutput(
+            output=result.output,
+            files=result.files,
+            mutation=True
         )
 
     @_tool(
@@ -643,8 +332,12 @@ class Tools:
             additional_properties=False
         ),
     )
-    def repo_tree(self) -> OutputProtocol:
-        return self.pather.repo_tree()
+    def repo_tree(self) -> ToolOutput:
+        result = self.workspace.repo_tree()
+        return ToolOutput(
+            output=result.output,
+            files=result.files
+        )
 
 @dataclass(frozen=True)
 class ChangeEvent(Serializable):
@@ -657,50 +350,34 @@ class ChangeEvent(Serializable):
             "tool": self.tool
         }
 
-@dataclass(frozen=True)
-class ToolOutput:
-    name: str
-    call_id: str
-
-    output: OutputProtocol
-    change_event: ChangeEvent | None = None
-
 @dataclass
-class ToolCall:
+class ToolEvent:
     name: str
     args: dict
-    call_id: str
+    id: str
 
-    change_event: ChangeEvent | None = field(init=False, default=None)
+    output: ToolOutput | None = None
 
-    def __post_init__(self):
-        summary = self.args.pop("change_summary", None)
-
-        if summary is not None:
-            self.change_event = ChangeEvent(
-                tool=self.name,
-                summary=summary
-            )
-
-    def execute(self, tools: Tools) -> ToolOutput:
+    def execute(self, tools: Tools) -> None:
         if self.name not in tools.mapping:
-            output = OutputProtocol(
-                status="error",
-                message=f"Tool {self.name} not found"
+            output = ToolOutput(
+                output=OutputProtocol(
+                    status="error",
+                    message=f"Tool {self.name} not found"
+                )
             )
+
         else:
             try:
                 output = tools.mapping[self.name](**self.args)
 
             except ToolUsageError as e:
-                output = OutputProtocol(
-                    status="error",
-                    message=str(e)
+                output = ToolOutput(
+                    output=OutputProtocol(
+                        status="error",
+                        message=str(e)
+                    )
                 )
 
-        return ToolOutput(
-            name=self.name,
-            call_id=self.call_id,
-            output=output,
-            change_event=self.change_event
-        )
+        self.output = output
+        return output
