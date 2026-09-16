@@ -321,11 +321,11 @@ class Tools:
                         initial_content,
                         file_patch.lines,
                     )
-                except ValueError as e:
-                    return OutputProtocol(
-                        status="error",
-                        message=f"{file_patch.path}: {e}",
-                    )
+
+                except ToolUsageError as e:
+                    raise ToolUsageError(
+                        f"{file_patch.path}: {e}"
+                    ) from e
 
                 pending_writes[full_path] = new_content
 
@@ -593,7 +593,7 @@ class Tools:
         return "\n".join(content)
 
     @_tool(
-        description="Deletes the directory with provided path.",
+        description="Delete an empty directory from the repository.",
         parameters=Parameters(
             properties={
                 "path": {
@@ -624,15 +624,27 @@ class Tools:
         try:
             full_path.rmdir()
         except OSError as e:
-            return OutputProtocol(
-                status="error",
-                message=str(e),
-            )
+            raise ToolUsageError(str(e)) from e
 
         return OutputProtocol(
             status="success",
             content=path,
         )
+
+    @_tool(
+        description=(
+            "Return the repository's directory and file structure without "
+            "reading file contents. Useful for understanding the repository "
+            "layout and locating potentially relevant files."
+        ),
+        parameters=Parameters(
+            properties={},
+            required=[],
+            additional_properties=False
+        ),
+    )
+    def repo_tree(self) -> OutputProtocol:
+        return self.pather.repo_tree()
 
 @dataclass(frozen=True)
 class ChangeEvent(Serializable):

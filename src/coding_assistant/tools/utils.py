@@ -1,7 +1,7 @@
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, ClassVar
 
 from ..utils import OutputProtocol
 
@@ -21,6 +21,8 @@ class Hunk:
 
 
 class Pather:
+
+    REPO_TREE_MAX_DEPTH: ClassVar[int] = 4
 
     def __init__(self,
                  repo_path: Path,
@@ -231,25 +233,44 @@ class Pather:
                 message=f"An error occurred: {process.stderr}"
             )
 
-    def is_allowed_file(
-            self,
-            path: Path
-    ) -> bool:
-        resolved_file = self.resolve_file(
-            path=path.as_posix()
+    def repo_tree(self) -> OutputProtocol:
+        lines: list[str] = []
+
+        def walk(path: Path, depth: int) -> None:
+            if depth > self.REPO_TREE_MAX_DEPTH:
+                return
+
+            try:
+                entries = sorted(
+                    path.iterdir(),
+                    key=lambda p: (p.is_file(), p.name.lower()),
+                )
+            except OSError:
+                return
+
+            for entry in entries:
+                relative = entry.relative_to(self.repo_path)
+
+                if entry.is_dir():
+                    if entry.name in self.blocked_dirs:
+                        continue
+                elif entry.name in self.blocked_files:
+                    continue
+
+                indent = "    " * depth
+
+                if entry.is_dir():
+                    lines.append(f"{indent}{relative.name}/")
+                    walk(entry, depth + 1)
+                else:
+                    lines.append(f"{indent}{relative.name}")
+
+        walk(self.repo_path, 0)
+
+        return OutputProtocol(
+            status="success",
+            content="\n".join(lines),
         )
-
-        return not resolved_file.is_fail()
-
-    def is_allowed_dir(
-            self,
-            path: Path
-    ) -> bool:
-        resolved_dir = self.resolve_dir(
-            path=path.as_posix()
-        )
-
-        return not resolved_dir.is_fail()
 
     def is_allowed_path(
             self,
