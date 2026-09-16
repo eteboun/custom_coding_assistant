@@ -82,10 +82,7 @@ class QueryLog(Serializable):
                 call.serialize()
                 for call in self.llm_calls
             ],
-            "query_records": [
-                record.serialize()
-                for record in self.query_records
-            ],
+            "query_record": self.query_record.serialize(),
             "usage": self.total_usage().serialize(),
         }
 

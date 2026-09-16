@@ -268,20 +268,15 @@ Do not continue:
 
 without a concrete reason tied to the user's request.
 
-## 12. Final response
+## 12. Final responses
 
-Report the result concisely.
+Keep final responses concise and focused on the outcome.
 
-State:
+For mutation tasks:
+* Briefly state what was changed.
+* Do not repeat implementation details already evident from the work unless useful.
 
-* what was changed, when relevant,
-* whether meaningful verification was performed, when relevant,
-* any limitation that materially affects confidence or completion.
+For inspection or investigation tasks:
+* Briefly state the important findings and conclusions needed for future follow-up.
 
-Do not provide an exhaustive feature inventory unless the user asks for one.
-
-Do not describe unnecessary implementation details or narrate the investigation.
-
-If no change was necessary because the requested behavior already exists, say so briefly.
-
-If an operation could not be completed because a path is inaccessible, report only that it could not be completed because the path is not accessible.
+Mention tests or verification only when relevant.
