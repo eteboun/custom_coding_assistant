@@ -1,19 +1,21 @@
 from pathlib import Path
 from typing import assert_never
 
-from ..config import Config
-from coding_assistant.models.schema import models_data, Context
-
 from .base import BaseLLM
 from .google import GeminiLLM
 from .openai import OpenAILLM
 from .anthropic import AnthropicLLM
 
+from ..config import Config
+
+from ..models.models import models_data
+from ..memory.memory import LongMemory
+
 def create_llm(
         instructions: str,
         repo_path: Path,
         config: Config,
-        context: Context | None = None
+        long_memory: LongMemory | None = None
 ) -> BaseLLM:
     model_data = models_data.models.get(config.model_name)
 
@@ -28,7 +30,7 @@ def create_llm(
                 instructions=instructions,
                 repo_path=repo_path,
                 config=config,
-                context=context
+                long_memory=long_memory
             )
 
         case "google":
@@ -36,7 +38,7 @@ def create_llm(
                 instructions=instructions,
                 repo_path=repo_path,
                 config=config,
-                context=context
+                long_memory=long_memory
             )
 
         case "anthropic":
@@ -44,7 +46,7 @@ def create_llm(
                 instructions=instructions,
                 repo_path=repo_path,
                 config=config,
-                context=context
+                long_memory=long_memory
             )
 
         case _:

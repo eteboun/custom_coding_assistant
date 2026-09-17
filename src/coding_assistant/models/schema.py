@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
-from typing import Literal, Any, Self
+from typing import Literal, Self
 
-from ..utils import Serializable
+from ..utils import LogElement
 
 ProviderId = Literal[
     "openai",
@@ -71,7 +71,7 @@ class ModelsData(BaseModel):
 
     models: dict[str, ModelData]
 
-class TokenUsage(BaseModel, Serializable):
+class TokenUsage(BaseModel, LogElement):
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -81,7 +81,7 @@ class TokenUsage(BaseModel, Serializable):
 
     total_tokens: int = 0
 
-    def serialize(self) -> Any:
+    def to_log(self) -> dict:
         return self.model_dump()
 
     @staticmethod

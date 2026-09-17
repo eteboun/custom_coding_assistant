@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ..utils import OutputProtocol, Serializable, ContextElement
+from ..utils import OutputProtocol, LogElement, ContextElement
 
 @dataclass(frozen=True)
-class LearningMetadata(Serializable):
+class LearningMetadata(LogElement):
     persistent: bool = False
     key: str | None = None
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "persistent": self.persistent,
             "key": self.key
@@ -43,11 +43,11 @@ class Invalidation(StrEnum):
 
 
 @dataclass(frozen=True)
-class Mutation(Serializable):
+class Mutation(LogElement):
     path: str
     type: Operation
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "path": self.path,
             "type": self.type.value
@@ -55,31 +55,31 @@ class Mutation(Serializable):
 
 
 @dataclass(frozen=True)
-class ToolOutput(Serializable, ContextElement):
+class ToolOutput(LogElement, ContextElement):
     output: OutputProtocol
     files: tuple[str, ...] = ()
     mutations: tuple[Mutation, ...] = ()
     learning_metadata: LearningMetadata | None = None
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "files": self.files,
             "mutations": [
-                mutation.serialize()
+                mutation.to_log()
                 for mutation in self.mutations
             ],
-            "learning_metadata": self.learning_metadata.serialize()
+            "learning_metadata": self.learning_metadata.to_log()
         }
 
     def to_context(self) -> dict:
-        return self.output.serialize()
+        return self.output.to_log()
 
     def is_fail(self) -> bool:
         return self.output.is_fail()
 
 
 @dataclass
-class ToolCall(Serializable, ContextElement):
+class ToolCall(LogElement, ContextElement):
     name: str
     args: dict
 
@@ -88,7 +88,7 @@ class ToolCall(Serializable, ContextElement):
     def __post_init__(self):
         self.mutation_summary = self.args.pop("change_summary", None)
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "name": self.name,
             "args": self.args,

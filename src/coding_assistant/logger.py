@@ -1,71 +1,57 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 import json
 
-from .utils import Serializable
-from .utils import OutputProtocol
-from coding_assistant.models.schema import TokenUsage, QueryRecord
+from .utils import LogElement, LogError
+from .models.schema import TokenUsage
+
 
 @dataclass
-class ToolEventLog(Serializable):
-    name: str
-    args: dict
-    output: OutputProtocol | None = None
-
-    def serialize(self) -> dict:
-        return {
-            "name": self.name,
-            "args": self.args,
-            **(
-                {
-                    "output": self.output.serialize()
-                } if self.output is not None
-                else {}
-            )
-        }
-
-@dataclass
-class LLMCallLog(Serializable):
+class LLMCallLog(LogElement):
     usage: TokenUsage
 
-    def serialize(self) -> dict:
-        return self.usage.serialize()
+    def to_log(self) -> dict:
+        return self.usage.to_log()
 
 @dataclass
 class LLMToolEventLog(LLMCallLog):
-    events: list[ToolEventLog]
+    memory: dict[str, Any]
+    events: list[dict]
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
-            "usage": super().serialize(),
-            "tool_calls": [
-                call.serialize()
-                for call in self.events
-            ],
+            "usage": super().to_log(),
+            "events": self.events,
+            "memory": self.memory
         }
 
 @dataclass
 class LLMFinalCallLog(LLMCallLog):
     response: str
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
-            "usage": super().serialize(),
+            "usage": super().to_log(),
             "response": self.response
         }
 
 @dataclass
-class QueryLog(Serializable):
+class QueryLog(LogElement):
     query: str
-    query_record: QueryRecord | None = None
-    llm_calls: list[LLMCallLog] = field(default_factory=list)
+    initial_memory: dict[str, Any]
+    final_memory: dict[str, Any] = field(
+        init=False,
+        default_factory=dict,
+    )
+    llm_calls: list[LLMCallLog] = field(
+        init=False,
+        default_factory=list,
+    )
 
     def add_llm_call(self, llm_call: LLMCallLog) -> None:
         self.llm_calls.append(llm_call)
-
-    def set_query_record(self, query_record: QueryRecord) -> None:
-        self.query_record = query_record
 
     def total_usage(self) -> TokenUsage:
         usage = TokenUsage()
@@ -75,25 +61,26 @@ class QueryLog(Serializable):
 
         return usage
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "query": self.query,
+            "initial_memory": self.initial_memory,
+            "final_memory": self.final_memory,
             "llm_calls": [
-                call.serialize()
-                for call in self.llm_calls
+                llm_call.to_log()
+                for llm_call in self.llm_calls
             ],
-            "query_record": self.query_record.serialize(),
-            "usage": self.total_usage().serialize(),
+            "total_usage": self.total_usage().to_log()
         }
 
 @dataclass
-class Logger(Serializable):
+class Logger(LogElement):
     log_path: Path
     query_logs: list[QueryLog] = field(default_factory=list)
 
-    def serialize(self) -> list:
+    def to_log(self) -> list[dict[str, Any]]:
         return [
-            query_log.serialize()
+            query_log.to_log()
             for query_log in self.query_logs
         ]
 
@@ -108,23 +95,15 @@ class Logger(Serializable):
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)
 
-    def log(self) -> OutputProtocol:
-        if len(self.query_logs) == 0:
-            return OutputProtocol(
-                status="error",
-                message="Nothing to log."
+    def log(self) -> None:
+        if not self.query_logs:
+            raise LogError(
+                "Nothing to log"
             )
 
         self.log_path.mkdir(parents=True, exist_ok=True)
 
         name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
-        data = self.serialize()
 
         with open(self.log_path / f"{name}.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-
-        return OutputProtocol(
-            status="success",
-            content=name,
-            message=f"Successfully logged as {name}."
-        )
+            json.dump(self.to_log(), f, ensure_ascii=False, indent=4)

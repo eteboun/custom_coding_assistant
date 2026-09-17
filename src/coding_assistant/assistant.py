@@ -3,8 +3,9 @@ import inspect
 
 from .config import Config
 
-from coding_assistant.models.schema import models_by_provider, models_data
+from .models.models import models_by_provider, models_data
 from .providers.llm import create_llm
+
 from coding_assistant.models.operations import adjust_reasoning, is_valid_reasoning
 from .utils import RecoverableError, CommandError, ConfigError
 
@@ -166,7 +167,7 @@ class Assistant:
             instructions=self.instructions,
             repo_path=self.repo_path,
             config=new_config,
-            context=self.llm.context
+            long_memory=self.llm.memory.long_memory
         )
 
         self.config = new_config

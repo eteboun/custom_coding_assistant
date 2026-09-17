@@ -4,14 +4,14 @@ from dataclasses import dataclass, field
 from ..tools.executor import Executor
 from ..tools.context import (ToolCall, ToolOutput, UpdateScope,
                                             Operation, Mutation, Invalidation, LearningMetadata)
-from ..utils import Serializable, ContextElement
+from ..utils import LogElement, ContextElement
 
 @dataclass(frozen=True)
-class MutationSummary(Serializable, ContextElement):
+class MutationSummary(LogElement, ContextElement):
     name: str
     summary: str
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "name": self.name,
             "summary": self.summary
@@ -24,18 +24,18 @@ class MutationSummary(Serializable, ContextElement):
         }
 
 @dataclass
-class QueryRecord(Serializable, ContextElement):
+class QueryRecord(LogElement, ContextElement):
     query: str
     final_response: str
     completed: bool
     mutation_summaries: list[MutationSummary]
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "query": self.query,
             "final_response": self.final_response,
             "mutation_summaries": [
-                mutation.serialize()
+                mutation.to_log()
                 for mutation in self.mutation_summaries
             ],
             "completed": self.completed
@@ -46,7 +46,7 @@ class QueryRecord(Serializable, ContextElement):
             "query": self.query,
             "final_response": self.final_response,
             "mutation_summaries": [
-                mutation.serialize()
+                mutation.to_context()
                 for mutation in self.mutation_summaries
             ]
         }
@@ -55,7 +55,7 @@ class QueryRecord(Serializable, ContextElement):
         self.mutation_summaries.append(mutation_summary)
 
 @dataclass
-class ToolEvent(Serializable, ContextElement):
+class ToolEvent(LogElement, ContextElement):
     call: ToolCall
     output: ToolOutput
 
@@ -65,7 +65,7 @@ class ToolEvent(Serializable, ContextElement):
     def is_fail(self) -> bool:
         return self.output.output.is_fail()
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         update_when = {
                 op.value: inv.value
                 for op, inv in self.update_when.items()
@@ -78,8 +78,8 @@ class ToolEvent(Serializable, ContextElement):
         )
 
         return {
-            "call": self.call.serialize(),
-            "output": self.output.serialize(),
+            "call": self.call.to_log(),
+            "output": self.output.to_log(),
             "update_when": update_when,
             "update_scope": update_scope
         }
@@ -92,12 +92,12 @@ class ToolEvent(Serializable, ContextElement):
 
 
 @dataclass(frozen=True)
-class PersistentLearning(Serializable, ContextElement):
+class PersistentLearning(LogElement, ContextElement):
     tool: str
     message: str
     key: str
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "tool": self.tool,
             "message": self.message,
@@ -112,18 +112,18 @@ class PersistentLearning(Serializable, ContextElement):
 
 
 @dataclass(frozen=True)
-class Learning(Serializable, ContextElement):
+class Learning(LogElement, ContextElement):
     tool: str
     args: dict
     message: str
     metadata: LearningMetadata
 
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         return {
             "tool": self.tool,
             "args": self.args,
             "message": self.message,
-            "metadata": self.metadata.serialize()
+            "metadata": self.metadata.to_log()
         }
 
     def to_context(self) -> dict:
@@ -152,9 +152,21 @@ class Learning(Serializable, ContextElement):
 
 
 @dataclass
-class LongMemory:
+class LongMemory(LogElement):
     query_records: list[QueryRecord] = field(default_factory=list)
     learnings: list[PersistentLearning] = field(default_factory=list)
+
+    def to_log(self) -> dict:
+        return {
+            "query_records": [
+                record.to_log()
+                for record in self.query_records
+            ],
+            "learnings": [
+                learning.to_log()
+                for learning in self.learnings
+            ]
+        }
 
     def add_learning(self, learning: PersistentLearning) -> None:
         if any(
@@ -166,16 +178,40 @@ class LongMemory:
         self.learnings.append(learning)
 
 @dataclass
-class ShortMemory:
+class ShortMemory(LogElement):
     events: list[ToolEvent] = field(default_factory=list)
     learnings: list[Learning] = field(default_factory=list)
     pending_mutations: list[MutationSummary] = field(default_factory=list)
 
+    def to_log(self) -> dict:
+        return {
+            "events": [
+                event.to_log()
+                for event in self.events
+            ],
+            "learnings": [
+                learning.to_log()
+                for learning in self.learnings
+            ],
+            "pending_mutations": [
+                mutation.to_log()
+                for mutation in self.pending_mutations
+            ]
+        }
+
+
 @dataclass
-class ActiveMemory:
+class ActiveMemory(LogElement):
     executor: Executor
     short_memory: ShortMemory
     long_memory: LongMemory
+    current_query: str | None = None
+
+    def to_log(self) -> dict:
+        return {
+            "short_memory": self.short_memory.to_log(),
+            "long_memory": self.long_memory.to_log()
+        }
 
     @staticmethod
     def _get_invalidation(
@@ -260,30 +296,40 @@ class ActiveMemory:
             )
         )
 
-    def finish_session(self,
-                       query: str,
-                       completed: bool = False,
-                       output: str | None = None
-                       ) -> None:
+    def finish_session(
+            self,
+            completed: bool = False,
+            output: str | None = None,
+    ) -> None:
+        if self.current_query is None:
+            raise RuntimeError("No active session")
 
         query_record = QueryRecord(
-            query=query,
-            mutation_summaries=list(self.short_memory.pending_mutations),
+            query=self.current_query,
+            mutation_summaries=list(
+                self.short_memory.pending_mutations
+            ),
             final_response=output,
-            completed=completed
+            completed=completed,
         )
 
         for learning in self.short_memory.learnings:
             if learning.metadata.persistent:
                 self.long_memory.add_learning(
-                    learning=learning.to_persistent()
+                    learning.to_persistent()
                 )
 
         self.long_memory.query_records.append(query_record)
-        self.short_memory = ShortMemory()
 
-    def start_session(self):
         self.short_memory = ShortMemory()
+        self.current_query = None
+
+    def start_session(self, query: str) -> None:
+        if self.current_query is not None:
+            raise RuntimeError("A session is already active")
+
+        self.short_memory = ShortMemory()
+        self.current_query = query
 
     @staticmethod
     def _format_context_elements[T: ContextElement](
@@ -342,6 +388,13 @@ class ActiveMemory:
                     tag="current_tool_context",
                     elements=self.short_memory.events,
                 )
+            )
+
+        if self.current_query is not None:
+            sections.append(
+                "<current_query>\n"
+                f"{self.current_query}\n"
+                "</current_query>"
             )
 
         return "\n\n".join(sections)

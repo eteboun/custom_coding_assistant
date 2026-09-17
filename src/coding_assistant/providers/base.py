@@ -12,17 +12,20 @@ from ..utils import MaxIterationsError
 
 from ..tools.content import Tools
 from ..tools.executor import Executor
-from ..tools.context import ToolOutput, ToolCall
+from ..tools.context import ToolCall
+
+from ..logger import QueryLog, Logger, LLMToolEventLog, LLMFinalCallLog
 
 class BaseLLM[ClientT](ABC):
     def __init__(
-            self,
-            instructions: str,
-            repo_path: Path,
-            config: Config,
-            client: ClientT,
-            provider: ProviderId,
-            long_memory: LongMemory | None = None
+        self,
+        instructions: str,
+        repo_path: Path,
+        config: Config,
+        client: ClientT,
+        provider: ProviderId,
+        *,
+        long_memory: LongMemory | None,
     ):
         self.config = config
         self.client = client
@@ -58,6 +61,10 @@ class BaseLLM[ClientT](ABC):
             short_memory=ShortMemory()
         )
 
+        self.logger = Logger(
+            log_path=config.log_path
+        )
+
 
     def update_reasoning(self, reasoning: ReasoningLevel | None) -> None:
         reasoning = resolve_reasoning(
@@ -83,42 +90,40 @@ class BaseLLM[ClientT](ABC):
     def tool_contract(self):
         ...
 
-    def generate(
-            self,
-            inputs: str | list[ToolOutput],
-            instructions: str
-    ):
-        return self._generate(
-            inputs=inputs,
-            instructions=instructions
-        )
-
     @abstractmethod
-    def _generate(
-        self,
-        inputs: str | list[ToolOutput],
-        instructions: str
-    ):
+    def generate(self):
         ...
 
+    def log(self) -> None:
+        self.logger.log()
+
     def run(self, query: str) -> str:
-        self.memory.start_session()
+        self.memory.start_session(query=query)
+
+        query_log = QueryLog(
+            query=query,
+            initial_memory=self.memory.to_log()
+        )
 
         output_text: str | None = None
         completed = False
 
         try:
-            response = self.generate(
-                inputs=query,
-                instructions=self.instructions,
-            )
+            response = self.generate()
 
             for i in range(self.config.max_iters):
+                usage = self.usage(response=response)
                 tool_calls = self.tool_call_contract(response)
 
                 if not tool_calls:
                     output_text = self.output_text(response)
                     completed = True
+
+                    query_log.add_llm_call(LLMFinalCallLog(
+                        usage=usage,
+                        response=output_text
+                    ))
+
                     return output_text
 
                 if i == self.config.max_iters - 1:
@@ -143,9 +148,9 @@ class BaseLLM[ClientT](ABC):
                         ))
                         continue
 
-                    metadata = self.tools.data_mapping.get(
+                    metadata = self.tools.data_mapping[
                         tool_call.name
-                    ).metadata
+                    ].metadata
 
                     events.append(ToolEvent(
                         call=tool_call,
@@ -157,14 +162,25 @@ class BaseLLM[ClientT](ABC):
                 for event in events:
                     self.memory.add_event(event)
 
-                response = self.generate(
-                    inputs=tool_outputs,
-                    instructions=self.instructions,
-                )
+                query_log.add_llm_call(LLMToolEventLog(
+                    usage=usage,
+                    memory=self.memory.to_log(),
+                    events=[
+                        event.to_log()
+                        for event in events
+                    ]
+                ))
+
+                response = self.generate()
 
         finally:
             self.memory.finish_session(
-                query=query,
                 output=output_text,
                 completed=completed
+            )
+
+            query_log.final_memory = self.memory.to_log()
+
+            self.logger.add_query_log(
+                query_log=query_log
             )

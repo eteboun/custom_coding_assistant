@@ -1,10 +1,10 @@
 from abc import abstractmethod, ABC
-from typing import Any, Literal, override, get_args
+from typing import Any, Literal, get_args
 from dataclasses import dataclass
 
-class Serializable(ABC):
+class LogElement(ABC):
     @abstractmethod
-    def serialize(self) -> Any:
+    def to_log(self) -> Any:
         ...
 
 class ContextElement(ABC):
@@ -15,7 +15,7 @@ class ContextElement(ABC):
 Status = Literal["error", "success"]
 
 @dataclass(frozen=True)
-class OutputProtocol(Serializable):
+class OutputProtocol(LogElement):
     status: Status
     content: Any = None
     message: str | None = None
@@ -30,15 +30,14 @@ class OutputProtocol(Serializable):
         if self.status == "error" and self.message is None:
             raise ValueError("Error output must contain a message")
 
-    @override
-    def serialize(self) -> dict:
+    def to_log(self) -> dict:
         serialized: dict[str, Any] = {
             "status": self.status
         }
 
         if self.content is not None:
-            if isinstance(self.content, Serializable):
-                serialized["content"] = self.content.serialize()
+            if isinstance(self.content, LogElement):
+                serialized["content"] = self.content.to_log()
 
             else:
                 serialized["content"] = self.content
@@ -58,6 +57,9 @@ class CommandError(RecoverableError):
     pass
 
 class MaxIterationsError(RecoverableError):
+    pass
+
+class LogError(RecoverableError):
     pass
 
 class ToolEnvironmentError(RecoverableError):

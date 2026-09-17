@@ -8,8 +8,6 @@ from .config import Config, instructions, config_file
 
 from dotenv import load_dotenv
 
-from .utils import ConfigError
-
 
 def main():
     load_dotenv()
