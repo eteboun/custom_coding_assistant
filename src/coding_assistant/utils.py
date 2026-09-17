@@ -3,9 +3,13 @@ from typing import Any, Literal, override, get_args
 from dataclasses import dataclass
 
 class Serializable(ABC):
-
     @abstractmethod
     def serialize(self) -> Any:
+        ...
+
+class ContextElement(ABC):
+    @abstractmethod
+    def to_context(self) -> Any:
         ...
 
 Status = Literal["error", "success"]
@@ -54,9 +58,6 @@ class CommandError(RecoverableError):
     pass
 
 class MaxIterationsError(RecoverableError):
-    pass
-
-class ToolUsageError(RecoverableError):
     pass
 
 class ToolEnvironmentError(RecoverableError):

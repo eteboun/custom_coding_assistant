@@ -1,4 +1,5 @@
-from .schemas import ProviderId, ModelData, ReasoningLevel, models_data
+from .schema import ProviderId, ModelData, ReasoningLevel
+from .models import models_data
 
 def resolve_model(
         model_name: str,

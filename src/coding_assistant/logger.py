@@ -5,7 +5,7 @@ import json
 
 from .utils import Serializable
 from .utils import OutputProtocol
-from .providers.schemas import TokenUsage, QueryRecord
+from coding_assistant.models.schema import TokenUsage, QueryRecord
 
 @dataclass
 class ToolEventLog(Serializable):

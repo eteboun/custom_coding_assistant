@@ -3,9 +3,9 @@ import inspect
 
 from .config import Config
 
-from .providers.schemas import models_by_provider, models_data
+from coding_assistant.models.schema import models_by_provider, models_data
 from .providers.llm import create_llm
-from .providers.utils import adjust_reasoning, is_valid_reasoning
+from coding_assistant.models.operations import adjust_reasoning, is_valid_reasoning
 from .utils import RecoverableError, CommandError, ConfigError
 
 class Assistant:

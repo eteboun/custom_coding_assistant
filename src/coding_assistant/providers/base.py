@@ -1,24 +1,28 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from .utils import resolve_reasoning, resolve_model
-from .schemas import (ProviderId, TokenUsage, ReasoningLevel,
-                      QueryRecord, MemoryType, Context, Mutation)
-from ..logger import Logger, QueryLog, LLMToolEventLog, LLMFinalCallLog, ToolEventLog
-from ..config import Config
-from ..tools.content import Tools, ToolCall
-from ..tools.schemas import ToolOutput
-from ..utils import OutputProtocol, MaxIterationsError
+from coding_assistant.memory.memory import ActiveMemory, ShortMemory, LongMemory, ToolEvent
 
-class BaseLLM[ClientT, ContextT: Context](ABC):
+from ..models.operations import resolve_reasoning, resolve_model
+from ..models.schema import ProviderId, TokenUsage, ReasoningLevel
+
+from ..config import Config
+
+from ..utils import MaxIterationsError
+
+from ..tools.content import Tools
+from ..tools.executor import Executor
+from ..tools.context import ToolOutput, ToolCall
+
+class BaseLLM[ClientT](ABC):
     def __init__(
             self,
             instructions: str,
             repo_path: Path,
             config: Config,
             client: ClientT,
-            context: ContextT,
-            provider: ProviderId
+            provider: ProviderId,
+            long_memory: LongMemory | None = None
     ):
         self.config = config
         self.client = client
@@ -40,11 +44,20 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
             blocked_dirs=config.blocked_dirs
         )
 
-        self.logger = Logger(
-            log_path=config.log_path
+        self.executor = Executor(
+            tools=self.tools
         )
 
-        self.context = context
+        self.memory = ActiveMemory(
+            executor=self.executor,
+            long_memory=(
+                long_memory
+                if long_memory is not None
+                else LongMemory()
+            ),
+            short_memory=ShortMemory()
+        )
+
 
     def update_reasoning(self, reasoning: ReasoningLevel | None) -> None:
         reasoning = resolve_reasoning(
@@ -63,169 +76,95 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
         ...
 
     @abstractmethod
-    def tool_event_contract(self, response) -> list[ToolCall]:
-        ...
-
-    @abstractmethod
-    def tool_output_contract(self, tool_output: ToolOutput):
+    def tool_call_contract(self, response) -> list[ToolCall]:
         ...
 
     @abstractmethod
     def tool_contract(self):
         ...
 
-    def execute_tool_events(
-            self,
-            events: list[ToolCall]
-    ) -> list[ToolOutput]:
-        return [
-            event.execute(self.tools)
-            for event in events
-        ]
-
-    @staticmethod
-    def create_llm_tool_event_log(
-            events: list[ToolCall],
-            usage: TokenUsage
-    ) -> LLMToolEventLog:
-        tool_events: list[ToolEventLog] = []
-        for event in events:
-
-            tool_events.append(ToolEventLog(
-                name=event.name,
-                args=event.args,
-                output=event.output.output
-            ))
-
-        return LLMToolEventLog(
-            events=tool_events,
-            usage=usage
-        )
-
-    @staticmethod
-    def save_mutations(
-            query_record: QueryRecord,
-            events: list[ToolCall]
-    ) -> None:
-        for event in events:
-            event_output = event.output
-
-            if (
-                    not event_output.output.is_fail()
-                    and event_output.mutation
-            ):
-                query_record.add_mutation(Mutation(
-                    name=event.name,
-                    summary=event.mutation_summary
-                ))
-
     def generate(
             self,
             inputs: str | list[ToolOutput],
-            instructions: str,
-            memory_type: MemoryType,
+            instructions: str
     ):
-        if memory_type == "context":
-            if not isinstance(inputs, str):
-                raise TypeError(
-                    "Context calls require a query string"
-                )
-
-        elif memory_type == "continuation":
-            if not isinstance(inputs, list):
-                raise TypeError(
-                    "Continuation calls require tool outputs"
-                )
-
-            if not self.context.can_continue():
-                raise ValueError(
-                    "Continuation requires a previous response"
-                )
-
-        else:
-            raise ValueError(
-                f"Invalid memory type: {memory_type}"
-            )
-
         return self._generate(
             inputs=inputs,
-            instructions=instructions,
-            memory_type=memory_type,
+            instructions=instructions
         )
 
     @abstractmethod
     def _generate(
         self,
         inputs: str | list[ToolOutput],
-        instructions: str,
-        memory_type: MemoryType,
+        instructions: str
     ):
         ...
 
-    def log(self) -> OutputProtocol:
-        return self.logger.log()
-
     def run(self, query: str) -> str:
-        self.context.start_query()
+        self.memory.start_session()
 
-        query_log = QueryLog(query=query)
-        query_record = QueryRecord(query=query)
+        output_text: str | None = None
+        completed = False
 
         try:
             response = self.generate(
                 inputs=query,
                 instructions=self.instructions,
-                memory_type="context"
             )
 
             for i in range(self.config.max_iters):
-                tool_events = self.tool_event_contract(response)
-                usage = self.usage(response=response)
+                tool_calls = self.tool_call_contract(response)
 
-                if not tool_events:
+                if not tool_calls:
                     output_text = self.output_text(response)
-
-                    query_log.add_llm_call(LLMFinalCallLog(
-                        usage=usage,
-                        response=output_text
-                    ))
-
-                    query_record.completed = True
-                    query_record.final_response = output_text
-
+                    completed = True
                     return output_text
 
                 if i == self.config.max_iters - 1:
-                    query_log.add_llm_call(self.create_llm_tool_event_log(
-                        events=tool_events,
-                        usage=usage
-                    ))
                     raise MaxIterationsError(
-                        f"Maximum iteration limit reached: {self.config.max_iters}"
+                        f"Maximum iteration limit reached: "
+                        f"{self.config.max_iters}"
                     )
 
-                outputs = self.execute_tool_events(tool_events)
+                tool_outputs = [
+                    self.executor.execute_call(call=call)
+                    for call in tool_calls
+                ]
 
-                self.save_mutations(
-                    query_record=query_record,
-                    events=tool_events
-                )
+                events: list[ToolEvent] = []
+                for tool_call, tool_output in zip(
+                        tool_calls, tool_outputs
+                ):
+                    if tool_output.is_fail():
+                        events.append(ToolEvent(
+                            call=tool_call,
+                            output=tool_output
+                        ))
+                        continue
 
-                query_log.add_llm_call(self.create_llm_tool_event_log(
-                    events=tool_events,
-                    usage=usage
-                ))
+                    metadata = self.tools.data_mapping.get(
+                        tool_call.name
+                    ).metadata
+
+                    events.append(ToolEvent(
+                        call=tool_call,
+                        output=tool_output,
+                        update_when=metadata.update_when,
+                        update_scope=metadata.update_scope
+                    ))
+
+                for event in events:
+                    self.memory.add_event(event)
 
                 response = self.generate(
-                    inputs=outputs,
+                    inputs=tool_outputs,
                     instructions=self.instructions,
-                    memory_type="continuation"
                 )
 
         finally:
-            self.context.add_record(record=query_record)
-            query_log.set_query_record(query_record=query_record)
-
-            self.logger.add_query_log(
-                query_log=query_log
+            self.memory.finish_session(
+                query=query,
+                output=output_text,
+                completed=completed
             )

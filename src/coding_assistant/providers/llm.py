@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import assert_never
 
 from ..config import Config
-from .schemas import models_data, Context, ReasoningLevel, ModelData
+from coding_assistant.models.schema import models_data, Context
 
 from .base import BaseLLM
 from .google import GeminiLLM

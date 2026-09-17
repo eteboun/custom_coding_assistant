@@ -8,7 +8,7 @@ from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
-from .schemas import TokenUsage, MemoryType, IdContext, Context
+from coding_assistant.models.schema import TokenUsage, MemoryType, IdContext, Context
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 

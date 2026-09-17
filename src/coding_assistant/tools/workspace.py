@@ -3,8 +3,9 @@ import json
 from pathlib import Path
 from typing import ClassVar
 
-from .schemas import ToolOutput, Mutation, Hunk, FilePatch, Operation
-from ..utils import OutputProtocol, ToolUsageError, ToolEnvironmentError
+from .apply_patch import _parse_patch, _apply_update, _parse_added_file
+from .context import ToolOutput, Mutation, Operation, ToolUsageError, LearningMetadata
+from ..utils import OutputProtocol, ToolEnvironmentError
 
 class Workspace:
 
@@ -53,12 +54,18 @@ class Workspace:
 
         if not full_path.is_relative_to(self.repo_path):
             raise ToolUsageError(
-                "Access outside the repository is denied"
+                "Access outside the repository is denied",
+                learning=LearningMetadata(
+                    persistent=True,
+                    key="workspace.outside_repository"
+                )
             )
+
+        relative = full_path.relative_to(self.repo_path)
 
         if full_path.name in self.blocked_files:
             raise ToolUsageError(
-                "Path is not accessible"
+                f"{relative.as_posix()} is not accessible"
             )
 
         relative_parts = full_path.relative_to(self.repo_path).parts
@@ -136,207 +143,6 @@ class Workspace:
 
         return True
 
-    def _parse_patch(self, patch: str) -> list[FilePatch]:
-        lines = patch.split("\n")
-
-        if not lines or lines[0] != "*** Begin Patch":
-            raise ToolUsageError("Patch must start with '*** Begin Patch'.")
-
-        if lines[-1] != "*** End Patch":
-            raise ToolUsageError("Patch must end with '*** End Patch'.")
-
-        result: list[FilePatch] = []
-        current: FilePatch | None = None
-
-        for line in lines[1:-1]:
-            if line.startswith("*** Update File: "):
-                if current is not None:
-                    result.append(current)
-
-                path=Path(
-                    line.removeprefix("*** Update File: ").strip(),
-                ).relative_to(self.repo_path).as_posix()
-                current = FilePatch(
-                    operation=Operation.UPDATE,
-                    path=path,
-                    lines=[],
-                )
-
-            elif line.startswith("*** Add File: "):
-                if current is not None:
-                    result.append(current)
-
-                path=Path(
-                    line.removeprefix("*** Update File: ").strip(),
-                ).relative_to(self.repo_path).as_posix()
-                current = FilePatch(
-                    operation=Operation.ADD,
-                    path=path,
-                    lines=[],
-                )
-
-            elif line.startswith("*** Delete File: "):
-                if current is not None:
-                    result.append(current)
-
-                path=Path(
-                    line.removeprefix("*** Update File: ").strip(),
-                ).relative_to(self.repo_path).as_posix()
-                current = FilePatch(
-                    operation=Operation.DELETE,
-                    path=path,
-                    lines=[],
-                )
-
-            elif line.startswith("*** "):
-                raise ToolUsageError(
-                    f"Unsupported patch metadata: {line}"
-                )
-
-            else:
-                if current is None:
-                    if not line:
-                        continue
-
-                    raise ToolUsageError(
-                        "Patch content appears before a file operation."
-                    )
-
-                current.lines.append(line)
-
-        if current is not None:
-            result.append(current)
-
-        if not result:
-            raise ToolUsageError("Patch contains no file operations.")
-
-        paths = [file_patch.path for file_patch in result]
-
-        if len(paths) != len(set(paths)):
-            raise ToolUsageError(
-                "Each file may appear only once in a patch."
-            )
-
-        return result
-
-    @staticmethod
-    def _apply_update(
-            initial_content: str,
-            lines: list[str],
-    ) -> str:
-        newline = "\r\n" if "\r\n" in initial_content else "\n"
-
-        raw_hunks: list[list[str]] = []
-        current: list[str] = []
-
-        for line in lines:
-            if line.startswith("@@"):
-                if current:
-                    raw_hunks.append(current)
-                    current = []
-                continue
-
-            if line == "*** End of File":
-                continue
-
-            if not line.startswith((" ", "-", "+")):
-                if not line:
-                    continue
-
-                raise ToolUsageError(
-                    f"Invalid patch line: {line!r}"
-                )
-
-            current.append(line)
-
-        if current:
-            raw_hunks.append(current)
-
-        if not raw_hunks:
-            raise ToolUsageError("Update contains no hunks.")
-
-        hunks: list[Hunk] = []
-
-        for index, raw_hunk in enumerate(raw_hunks):
-            old_lines = [
-                line[1:]
-                for line in raw_hunk
-                if line.startswith((" ", "-"))
-            ]
-
-            new_lines = [
-                line[1:]
-                for line in raw_hunk
-                if line.startswith((" ", "+"))
-            ]
-
-            if not old_lines:
-                raise ToolUsageError(
-                    f"Hunk {index} contains no existing text."
-                )
-
-            old_text = newline.join(old_lines)
-            new_text = newline.join(new_lines)
-
-            first = initial_content.find(old_text)
-
-            if first == -1:
-                raise ToolUsageError(
-                    f"Hunk {index} target was not found."
-                )
-
-            second = initial_content.find(
-                old_text,
-                first + 1,
-            )
-
-            if second != -1:
-                raise ToolUsageError(
-                    f"Hunk {index} target is ambiguous."
-                )
-
-            hunks.append(
-                Hunk(
-                    start=first,
-                    end=first + len(old_text),
-                    new_text=new_text,
-                )
-            )
-
-        hunks.sort(key=lambda hunk: hunk.start)
-
-        for current_, next_hunk in zip(hunks, hunks[1:]):
-            if next_hunk.start < current_.end:
-                raise ToolUsageError("Update hunks overlap.")
-
-        content = initial_content
-
-        for hunk in reversed(hunks):
-            content = (
-                    content[:hunk.start]
-                    + hunk.new_text
-                    + content[hunk.end:]
-            )
-
-        return content
-
-    @staticmethod
-    def _parse_added_file(lines: list[str]) -> str:
-        content: list[str] = []
-
-        for line in lines:
-            if not line:
-                continue
-
-            if not line.startswith("+"):
-                raise ToolUsageError(
-                    "Every Add File content line must start with '+'."
-                )
-
-            content.append(line[1:])
-
-        return "\n".join(content)
-
     def search_files(
             self,
             pattern: str | None = None,
@@ -344,7 +150,11 @@ class Workspace:
     ) -> ToolOutput:
         if max_results < 1:
             raise ToolUsageError(
-                "max_results must be at least 1."
+                "max_results must be at least 1.",
+                learning=LearningMetadata(
+                    persistent=True,
+                    key="search_files.max_results_below_minimum",
+                ),
             )
 
         cmd = ["rg", "--files"]
@@ -599,7 +409,7 @@ class Workspace:
     ) -> ToolOutput:
         patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
-        file_patches = self._parse_patch(patch)
+        file_patches = _parse_patch(self.repo_path, patch)
 
         pending_writes: dict[Path, str] = {}
         pending_deletes: set[Path] = set()
@@ -613,7 +423,7 @@ class Workspace:
                     initial_content = f.read()
 
                 try:
-                    new_content = self._apply_update(
+                    new_content = _apply_update(
                         initial_content,
                         file_patch.lines,
                     )
@@ -647,7 +457,7 @@ class Workspace:
                     )
 
                 try:
-                    new_content = self._parse_added_file(
+                    new_content = _parse_added_file(
                         file_patch.lines
                     )
                 except ValueError as e:
@@ -659,7 +469,11 @@ class Workspace:
 
         if pending_deletes & pending_writes.keys():
             raise ToolUsageError(
-                "A file cannot be both written and deleted."
+                "A file cannot be both written and deleted.",
+                learning=LearningMetadata(
+                    persistent=True,
+                    key="apply_patch.conflicting_file_operations"
+                )
             )
 
         for path in pending_deletes:

@@ -8,7 +8,7 @@ from anthropic.types import (ToolParam, MessageParam,
                              Message, ToolResultBlockParam)
 
 from .base import BaseLLM
-from .schemas import TokenUsage, MemoryType, MessageContext, Context
+from coding_assistant.models.schema import TokenUsage, MemoryType, MessageContext, Context
 from ..config import Config
 from ..tools.content import ToolCall, ToolOutput
 

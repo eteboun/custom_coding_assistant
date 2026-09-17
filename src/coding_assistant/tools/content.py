@@ -3,10 +3,9 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 
-from .schemas import (ToolSchema, ToolCall, Parameters, Invalidation,
-                      Metadata, ToolOutput, Operation, UpdateScope)
+from .schema import ToolSchema, Parameters, Metadata
+from .context import Invalidation, ToolOutput, Operation, UpdateScope
 from .workspace import Workspace
-from ..utils import OutputProtocol, ToolUsageError
 
 
 class Tools:
@@ -351,36 +350,3 @@ class Tools:
     )
     def repo_tree(self) -> ToolOutput:
         return self.workspace.repo_tree()
-
-    def execute_call(self, call: ToolCall) -> ToolOutput:
-        try:
-            if call.name not in self.function_mapping:
-                raise ToolUsageError(
-                    f"Tool {call.name} not found"
-                )
-
-            tool = self.function_mapping[call.name]
-            tool_data = self.data_mapping[call.name]
-
-            if (
-                    tool_data.metadata.mutative
-                    and (
-                        call.mutation_summary is None
-                        or not call.mutation_summary.strip()
-                )
-            ):
-                raise ToolUsageError(
-                    f"Tool {call.name} requires mutation summary"
-                )
-
-            output = tool(self, **call.args)
-
-        except ToolUsageError as e:
-            output = ToolOutput(
-                output=OutputProtocol(
-                    status="error",
-                    message=str(e)
-                )
-            )
-
-        return output
