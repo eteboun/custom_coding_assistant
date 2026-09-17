@@ -28,7 +28,7 @@ class Executor:
                     f"Tool {call.name} requires mutation summary"
                 )
 
-            output = tool(self, **call.args)
+            output = tool(**call.args)
 
         except ToolUsageError as e:
             output = ToolOutput(

@@ -25,7 +25,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
             instructions=instructions,
             repo_path=repo_path,
             config=config,
-            provider="openai",
+            provider="anthropic",
             client=Anthropic(),
             long_memory=long_memory
         )
@@ -101,15 +101,15 @@ class AnthropicLLM(BaseLLM[Anthropic]):
     def tool_contract(self) -> list[ToolParam]:
         return [
             ToolParam(
-                name=tool.name,
-                description=tool.description,
+                name=tool_data.name,
+                description=tool_data.description,
                 input_schema={
                     "type": "object",
-                    "properties": tool.parameters.properties,
-                    "required": tool.parameters.required,
-                    "additionalProperties": tool.parameters.additional_properties
+                    "properties": tool_data.parameters.properties,
+                    "required": tool_data.parameters.required,
+                    "additionalProperties": tool_data.parameters.additional_properties
                 },
-                strict=tool.strict
+                strict=tool_data.strict
             )
-            for tool in self.tools.datas
+            for tool_data in self.tools.data_mapping.values()
         ]

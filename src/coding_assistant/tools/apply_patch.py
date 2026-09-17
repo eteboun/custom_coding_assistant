@@ -16,7 +16,7 @@ class Hunk:
     new_text: str
 
 
-def _parse_patch(repo_path: Path, patch: str) -> list[FilePatch]:
+def _parse_patch(patch: str) -> list[FilePatch]:
     lines = patch.split("\n")
 
     if not lines or lines[0] != "*** Begin Patch":
@@ -46,8 +46,20 @@ def _parse_patch(repo_path: Path, patch: str) -> list[FilePatch]:
                 result.append(current)
 
             path = Path(
-                line.removeprefix("*** Update File: ").strip(),
-            ).relative_to(repo_path).as_posix()
+                line.removeprefix("*** Update File: ").strip()
+            )
+
+            if path.is_absolute():
+                raise ToolUsageError(
+                    "Patch paths must be relative to the repository.",
+                    learning=LearningMetadata(
+                        persistent=True,
+                        key="apply_patch.non_relative_path"
+                    )
+                )
+
+            path = path.as_posix()
+
             current = FilePatch(
                 operation=Operation.UPDATE,
                 path=path,
@@ -59,8 +71,20 @@ def _parse_patch(repo_path: Path, patch: str) -> list[FilePatch]:
                 result.append(current)
 
             path = Path(
-                line.removeprefix("*** Update File: ").strip(),
-            ).relative_to(repo_path).as_posix()
+                line.removeprefix("*** Add File: ").strip()
+            )
+
+            if path.is_absolute():
+                raise ToolUsageError(
+                    "Patch paths must be relative to the repository.",
+                    learning=LearningMetadata(
+                        persistent=True,
+                        key="apply_patch.non_relative_path"
+                    )
+                )
+
+            path = path.as_posix()
+
             current = FilePatch(
                 operation=Operation.ADD,
                 path=path,
@@ -72,8 +96,20 @@ def _parse_patch(repo_path: Path, patch: str) -> list[FilePatch]:
                 result.append(current)
 
             path = Path(
-                line.removeprefix("*** Update File: ").strip(),
-            ).relative_to(repo_path).as_posix()
+                line.removeprefix("*** Delete File: ").strip()
+            )
+
+            if path.is_absolute():
+                raise ToolUsageError(
+                    "Patch paths must be relative to the repository.",
+                    learning=LearningMetadata(
+                        persistent=True,
+                        key="apply_patch.non_relative_path"
+                    )
+                )
+
+            path = path.as_posix()
+
             current = FilePatch(
                 operation=Operation.DELETE,
                 path=path,

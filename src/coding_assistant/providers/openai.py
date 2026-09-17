@@ -85,15 +85,15 @@ class OpenAILLM(BaseLLM[OpenAI]):
         return [
             {
                 "type": "function",
-                "name": tool.name,
-                "description": tool.description,
+                "name": tool_data.name,
+                "description": tool_data.description,
                 "parameters": {
                     "type": "object",
-                    "properties": tool.parameters.properties,
-                    "required": tool.parameters.required,
-                    "additionalProperties": tool.parameters.additional_properties
+                    "properties": tool_data.parameters.properties,
+                    "required": tool_data.parameters.required,
+                    "additionalProperties": tool_data.parameters.additional_properties
                 },
-                "strict": tool.strict,
+                "strict": tool_data.strict,
             }
-            for tool in self.tools.datas
+            for tool_data in self.tools.data_mapping.values()
         ]

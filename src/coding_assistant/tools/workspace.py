@@ -409,7 +409,7 @@ class Workspace:
     ) -> ToolOutput:
         patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
-        file_patches = _parse_patch(self.repo_path, patch)
+        file_patches = _parse_patch(patch)
 
         pending_writes: dict[Path, str] = {}
         pending_deletes: set[Path] = set()

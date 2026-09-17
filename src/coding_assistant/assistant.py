@@ -254,8 +254,8 @@ class Assistant:
         Logs current session state.
         """
 
-        log_output = self.llm.log()
-        return log_output.message
+        name = self.llm.log()
+        return f"Successfully logged as {name}."
 
     @_command()
     def help(self) -> str:

@@ -55,13 +55,13 @@ class Tools:
         for _, func in inspect.getmembers(self, predicate=inspect.ismethod):
             if getattr(func, "is_tool", False):
                 funcs.append(func)
-
+    
         return funcs
 
     def _tool_data_mapping(self) -> dict[str, ToolSchema]:
         return {
-            tool_data.name: tool_data
-            for func, tool_data in self.data_mapping
+            tool.tool_data.name: tool.tool_data
+            for tool in self._tools()
         }
 
     def _tool_function_mapping(self) -> dict[str, Callable]:

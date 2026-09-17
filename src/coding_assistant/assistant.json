@@ -1,6 +1,6 @@
 {
 
-    "model_name": "gpt-6-astra",
+    "model_name": "claude-fable-5-1",
     "reasoning": "medium",
 
     "max_iters": 10,

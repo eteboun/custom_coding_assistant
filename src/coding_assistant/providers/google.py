@@ -23,7 +23,7 @@ class GeminiLLM(BaseLLM[genai.Client]):
             instructions=instructions,
             repo_path=repo_path,
             config=config,
-            provider="openai",
+            provider="google",
             client=genai.Client(),
             long_memory=long_memory
         )
@@ -82,13 +82,13 @@ class GeminiLLM(BaseLLM[genai.Client]):
         return [
             {
                 "type": "function",
-                "name": tool.name,
-                "description": tool.description,
+                "name": tool_data.name,
+                "description": tool_data.description,
                 "parameters": {
                     "type": "object",
-                    "properties": tool.parameters.properties,
-                    "required": tool.parameters.required
+                    "properties": tool_data.parameters.properties,
+                    "required": tool_data.parameters.required
                 }
             }
-            for tool in self.tools.datas
+            for tool_data in self.tools.data_mapping.values()
         ]

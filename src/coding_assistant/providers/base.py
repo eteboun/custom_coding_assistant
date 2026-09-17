@@ -94,8 +94,8 @@ class BaseLLM[ClientT](ABC):
     def generate(self):
         ...
 
-    def log(self) -> None:
-        self.logger.log()
+    def log(self) -> str:
+        return self.logger.log()
 
     def run(self, query: str) -> str:
         self.memory.start_session(query=query)

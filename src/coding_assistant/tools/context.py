@@ -68,7 +68,11 @@ class ToolOutput(LogElement, ContextElement):
                 mutation.to_log()
                 for mutation in self.mutations
             ],
-            "learning_metadata": self.learning_metadata.to_log()
+            "learning_metadata": (
+                self.learning_metadata.to_log()
+                if self.learning_metadata is not None
+                else None
+            )
         }
 
     def to_context(self) -> dict:

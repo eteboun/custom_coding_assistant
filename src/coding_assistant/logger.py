@@ -95,7 +95,7 @@ class Logger(LogElement):
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)
 
-    def log(self) -> None:
+    def log(self) -> str:
         if not self.query_logs:
             raise LogError(
                 "Nothing to log"
@@ -107,3 +107,5 @@ class Logger(LogElement):
 
         with open(self.log_path / f"{name}.json", "w", encoding="utf-8") as f:
             json.dump(self.to_log(), f, ensure_ascii=False, indent=4)
+
+        return name
