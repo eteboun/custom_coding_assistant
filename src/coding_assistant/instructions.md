@@ -230,17 +230,32 @@ Re-plan only the part of the task affected by new evidence.
 
 Do not restart repository exploration from the beginning.
 
-## 10. Handle follow-up requests using existing context
+## 10. Use provided context as working memory
 
-Use conversation context for previous requests, decisions, tool results, and completed work.
+The provided context may contain:
 
-Treat the repository as the source of truth for current code state.
+* previous query records,
+* persistent learnings,
+* mutations made during the current query,
+* learnings from failed tool calls,
+* current tool results,
+* the current user query.
 
-Do not re-inspect previously seen files merely because the request is a follow-up.
+Treat this context as your working memory for the current call.
 
-Re-inspect when their exact current contents materially affect the next action.
+Do not repeat a tool call when the provided current tool context already contains the information needed to continue.
 
-Do not assume previously inspected contents are still current when exact current state is required.
+Current tool results reflect the memory system's current view of repository state. Results that became invalid because of repository mutations may have been refreshed or removed before being provided to you.
+
+Mutation summaries describe changes already successfully applied during the current query. Do not repeat those mutations merely to confirm that they occurred.
+
+Persistent learnings describe relevant tool-use constraints learned from previous failures. Apply them when using tools.
+
+Previous query records are historical context, not authoritative snapshots of current repository contents. Use them to understand prior requests and completed work, but use current tool context or repository tools when exact current state is required.
+
+Do not re-inspect previously known information unless its exact current value materially affects the next action.
+
+If current context already provides enough information to act or finish, do not call another tool.
 
 ## 11. Know when to stop
 
