@@ -1,15 +1,10 @@
-from __future__ import annotations
 
 from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
-from typing import override, Literal
 
+from ..tools.schemas import (ToolCall, ToolOutput, UpdateScope,
+                             Metadata, Mutation, Invalidation)
 from ..utils import Serializable
-from ..tools.content import Tools, ToolEvent
-
-MemoryType = Literal[
-    "continuation", "context"
-]
+from ..tools.content import Tools
 
 @dataclass(frozen=True)
 class MutationSummary(Serializable):
@@ -42,87 +37,118 @@ class QueryRecord(Serializable):
     def add_mutation(self, mutation_summary: MutationSummary) -> None:
         self.mutation_summaries.append(mutation_summary)
 
-@dataclass
-class ShortMemory:
-    tools: Tools
-    events: list[ToolEvent] = field(default_factory=list)
-    pending_mutation: MutationSummary | None = None
+class ToolEvent:
+    call: ToolCall
+    output: ToolOutput
 
-    def update(self, event: ToolEvent) -> None:
-        if not event.output.mutations:
-            self.events.append(event)
-            return
+    def is_fail(self) -> bool:
+        return self.output.output.is_fail()
 
-        new_events: list[ToolEvent] = []
-        affected_files = event.output.files
-
-        for saved_event in self.events:
-            if any(
-                    file in affected_files
-                    for file in saved_event.output.files
-            ):
-                saved_event.execute(self.tools)
-                if saved_event.output.output.is_fail():
-                    continue
-
-                new_events.append(saved_event)
-
-            else:
-                new_events.append(saved_event)
-
-        self.events = new_events
-        self.pending_mutation = MutationSummary(
-            name=event.name,
-            summary=event.mutation_summary
-        )
-
+@dataclass(frozen=True)
+class Learning:
+    tool: str
+    args: dict
+    message: str
 
 
 @dataclass
 class LongMemory:
     query_records: list[QueryRecord] = field(default_factory=list)
 
-@dataclass
-class Context(ABC):
-    query_records: list[QueryRecord] = field(default_factory=list)
-
-    def add_record(self, record: QueryRecord) -> None:
-        self.query_records.append(record)
-
-    @abstractmethod
-    def start_query(self) -> None:
-        ...
-
-    @abstractmethod
-    def can_continue(self) -> bool:
-        ...
 
 @dataclass
-class IdContext(Context):
-    last_id: str | None = None
+class ShortMemory:
+    tools: Tools
+    events: list[ToolEvent] = field(default_factory=list)
+    learnings: list[Learning] = field(default_factory=list)
+    pending_mutations: list[MutationSummary] = field(default_factory=list)
 
-    @override
-    def start_query(self) -> None:
-        self.last_id = None
+    @staticmethod
+    def _get_invalidation(
+            metadata: Metadata,
+            mutations: tuple[Mutation, ...],
+            files: tuple[str, ...],
+    ) -> Invalidation | None:
+        result: Invalidation | None = None
 
-    @override
-    def can_continue(self) -> bool:
-        return self.last_id is not None
+        for mutation in mutations:
+            invalidation = metadata.update_when.get(mutation.type)
 
-    def update_id(self, id_: str) -> None:
-        self.last_id = id_
+            if invalidation is None:
+                continue
+
+            applies = (
+                    metadata.update_scope == UpdateScope.REPOSITORY
+                    or (
+                            metadata.update_scope == UpdateScope.FILE
+                            and mutation.path in files
+                    )
+            )
+
+            if not applies:
+                continue
+
+            if invalidation == Invalidation.DISCARD:
+                return Invalidation.DISCARD
+
+            result = Invalidation.REFRESH
+
+        return result
+
+    def add_event(self, event: ToolEvent) -> None:
+        if event.is_fail():
+            self.learnings.append(
+                Learning(
+                    tool=event.call.name,
+                    args=event.call.args,
+                    message=event.output.output.message,
+                )
+            )
+            return
+
+        if not event.output.mutations:
+            self.events.append(event)
+            return
+
+        mutations = event.output.mutations
+        updated_events: list[ToolEvent] = []
+
+        for saved_event in self.events:
+            metadata = self.tools.data_mapping[
+                saved_event.call.name
+            ].metadata
+
+            invalidation = self._get_invalidation(
+                metadata=metadata,
+                mutations=mutations,
+                files=saved_event.output.files,
+            )
+
+            if invalidation is None:
+                updated_events.append(saved_event)
+
+            elif invalidation == Invalidation.REFRESH:
+                saved_event.output = self.tools.execute_call(
+                    call=saved_event.call
+                )
+
+                if not saved_event.is_fail():
+                    updated_events.append(saved_event)
+
+
+        self.events = updated_events
+
+        assert event.call.mutation_summary is not None
+
+        self.pending_mutations.append(
+            MutationSummary(
+                name=event.call.name,
+                summary=event.call.mutation_summary,
+            )
+        )
 
 @dataclass
-class MessageContext[T](Context):
-    messages: list[T] = field(default_factory=list)
+class ActiveMemory:
+    short_memory: ShortMemory
+    long_memory: LongMemory
 
-    @override
-    def start_query(self) -> None:
-        self.messages.clear()
-
-    @override
-    def can_continue(self) -> bool:
-        return bool(self.messages)
-
-    def add_message(self, message: T) -> None:
-        self.messages.append(message)

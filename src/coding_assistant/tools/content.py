@@ -1,22 +1,13 @@
 import inspect
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
-from .event import ToolEvent, ToolOutput, UpdateScope, MutationType
+from .schemas import (ToolSchema, ToolCall, Parameters, Invalidation,
+                      Metadata, ToolOutput, Operation, UpdateScope)
 from .workspace import Workspace
-from .schemas import ToolSchema, Parameters
 from ..utils import OutputProtocol, ToolUsageError
 
-@dataclass(frozen=True)
-class Tool:
-    func: Callable
-    update_scope: UpdateScope | None = None
-    update_when: tuple[MutationType, ...] = ()
-
-    def execute(self, args: dict) -> ToolOutput:
-        return self.func(**args)
 
 class Tools:
 
@@ -32,16 +23,15 @@ class Tools:
             blocked_dirs=blocked_dirs
         )
 
-        self.mapping = self._tool_mapping()
+        self.function_mapping = self._tool_function_mapping()
         self.data_mapping = self._tool_data_mapping()
 
     @staticmethod
     def _tool(
             description: str,
             parameters: Parameters,
-            strict: bool = False,
-            update_scope: UpdateScope | None = None,
-            update_when: tuple[MutationType, ...] = ()
+            metadata: Metadata,
+            strict: bool = False
     ) -> Callable:
 
         def decorator(func):
@@ -50,8 +40,7 @@ class Tools:
                 description=description,
                 parameters=parameters,
                 strict=strict,
-                update_scope=update_scope,
-                update_when=update_when
+                metadata=metadata
             )
 
             func.is_tool = True
@@ -70,19 +59,15 @@ class Tools:
 
         return funcs
 
-    def _tool_mapping(self) -> dict[str, Tool]:
+    def _tool_data_mapping(self) -> dict[str, ToolSchema]:
         return {
-            tool_data.name: Tool(
-                func=func,
-                update_when=tool_data.update_when,
-                update_scope=tool_data.update_scope
-            )
+            tool_data.name: tool_data
             for func, tool_data in self.data_mapping
         }
 
-    def _tool_data_mapping(self) -> dict[Callable, ToolSchema]:
+    def _tool_function_mapping(self) -> dict[str, Callable]:
         return {
-            tool: tool.tool_data
+            tool.tool_data.name: tool
             for tool in self._tools()
         }
 
@@ -116,7 +101,13 @@ class Tools:
             required=["path", "start_line", "end_line"],
             additional_properties=False
         ),
-
+        metadata=Metadata(
+            update_scope=UpdateScope.FILE,
+            update_when={
+                Operation.UPDATE: Invalidation.REFRESH,
+                Operation.DELETE: Invalidation.DISCARD
+            }
+        )
     )
     def read_file(
         self,
@@ -144,6 +135,13 @@ class Tools:
             required=["path"],
             additional_properties=False,
         ),
+        metadata=Metadata(
+            update_scope=UpdateScope.REPOSITORY,
+            update_when={
+                Operation.ADD: Invalidation.REFRESH,
+                Operation.DELETE: Invalidation.REFRESH
+            }
+        )
     )
     def list_directory(self, path: str) -> ToolOutput:
         return self.workspace.list_directory(
@@ -174,6 +172,13 @@ class Tools:
             },
             required=[],
             additional_properties=False
+        ),
+        metadata=Metadata(
+            update_scope=UpdateScope.REPOSITORY,
+            update_when={
+                Operation.ADD: Invalidation.REFRESH,
+                Operation.DELETE: Invalidation.REFRESH
+            }
         )
     )
     def search_files(
@@ -205,6 +210,14 @@ class Tools:
             },
             required=["query"],
             additional_properties=False,
+        ),
+        metadata=Metadata(
+            update_scope=UpdateScope.REPOSITORY,
+            update_when={
+                Operation.ADD: Invalidation.REFRESH,
+                Operation.DELETE: Invalidation.REFRESH,
+                Operation.UPDATE: Invalidation.REFRESH
+            }
         )
     )
     def search_text(self,
@@ -272,6 +285,11 @@ class Tools:
             additional_properties=False,
         ),
         strict=True,
+        metadata=Metadata(
+            update_scope=None,
+            update_when={},
+            mutative=True
+        )
     )
     def apply_patch(
             self,
@@ -301,6 +319,11 @@ class Tools:
             required=["path", "change_summary"],
             additional_properties=False,
         ),
+        metadata=Metadata(
+            update_scope=None,
+            update_when={},
+            mutative=True
+        )
     )
     def delete_dir(self, path: str) -> ToolOutput:
         return self.workspace.delete_dir(
@@ -318,36 +341,46 @@ class Tools:
             required=[],
             additional_properties=False
         ),
+        metadata=Metadata(
+            update_scope=UpdateScope.REPOSITORY,
+            update_when={
+                Operation.ADD: Invalidation.REFRESH,
+                Operation.DELETE: Invalidation.REFRESH
+            }
+        )
     )
     def repo_tree(self) -> ToolOutput:
         return self.workspace.repo_tree()
 
-    def execute_event(self, event: ToolEvent) -> ToolOutput:
-        if event.name not in self.mapping:
+    def execute_call(self, call: ToolCall) -> ToolOutput:
+        try:
+            if call.name not in self.function_mapping:
+                raise ToolUsageError(
+                    f"Tool {call.name} not found"
+                )
+
+            tool = self.function_mapping[call.name]
+            tool_data = self.data_mapping[call.name]
+
+            if (
+                    tool_data.metadata.mutative
+                    and (
+                        call.mutation_summary is None
+                        or not call.mutation_summary.strip()
+                )
+            ):
+                raise ToolUsageError(
+                    f"Tool {call.name} requires mutation summary"
+                )
+
+            output = tool(self, **call.args)
+
+        except ToolUsageError as e:
             output = ToolOutput(
                 output=OutputProtocol(
                     status="error",
-                    message=f"Tool {event.name} not found"
+                    message=str(e)
                 )
             )
 
-        else:
-            try:
-                tool = self.mapping[event.name]
-                output = tool.execute(
-                    **event.args
-                )
-
-                event.update_scope = tool.update_scope
-                event.update_when = tool.update_when
-
-            except ToolUsageError as e:
-                output = ToolOutput(
-                    output=OutputProtocol(
-                        status="error",
-                        message=str(e)
-                    )
-                )
-
-        event.output = output
         return output

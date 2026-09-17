@@ -3,8 +3,7 @@ import json
 from pathlib import Path
 from typing import ClassVar
 
-from .schemas import Hunk, FilePatch
-from .event import ToolOutput, Mutation
+from .schemas import ToolOutput, Mutation, Hunk, FilePatch, Operation
 from ..utils import OutputProtocol, ToolUsageError, ToolEnvironmentError
 
 class Workspace:
@@ -158,7 +157,7 @@ class Workspace:
                     line.removeprefix("*** Update File: ").strip(),
                 ).relative_to(self.repo_path).as_posix()
                 current = FilePatch(
-                    operation="update",
+                    operation=Operation.UPDATE,
                     path=path,
                     lines=[],
                 )
@@ -171,7 +170,7 @@ class Workspace:
                     line.removeprefix("*** Update File: ").strip(),
                 ).relative_to(self.repo_path).as_posix()
                 current = FilePatch(
-                    operation="add",
+                    operation=Operation.ADD,
                     path=path,
                     lines=[],
                 )
@@ -184,7 +183,7 @@ class Workspace:
                     line.removeprefix("*** Update File: ").strip(),
                 ).relative_to(self.repo_path).as_posix()
                 current = FilePatch(
-                    operation="delete",
+                    operation=Operation.DELETE,
                     path=path,
                     lines=[],
                 )
@@ -551,7 +550,7 @@ class Workspace:
             mutations=(
                 Mutation(
                     path=relative_path,
-                    type="delete"
+                    type=Operation.DELETE
                 ),
             )
         )

@@ -6,7 +6,7 @@ from .schemas import (ProviderId, TokenUsage, ReasoningLevel,
                       QueryRecord, MemoryType, Context, Mutation)
 from ..logger import Logger, QueryLog, LLMToolEventLog, LLMFinalCallLog, ToolEventLog
 from ..config import Config
-from ..tools.content import Tools, ToolEvent
+from ..tools.content import Tools, ToolCall
 from ..tools.schemas import ToolOutput
 from ..utils import OutputProtocol, MaxIterationsError
 
@@ -63,7 +63,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
         ...
 
     @abstractmethod
-    def tool_event_contract(self, response) -> list[ToolEvent]:
+    def tool_event_contract(self, response) -> list[ToolCall]:
         ...
 
     @abstractmethod
@@ -76,7 +76,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
 
     def execute_tool_events(
             self,
-            events: list[ToolEvent]
+            events: list[ToolCall]
     ) -> list[ToolOutput]:
         return [
             event.execute(self.tools)
@@ -85,7 +85,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
 
     @staticmethod
     def create_llm_tool_event_log(
-            events: list[ToolEvent],
+            events: list[ToolCall],
             usage: TokenUsage
     ) -> LLMToolEventLog:
         tool_events: list[ToolEventLog] = []
@@ -105,7 +105,7 @@ class BaseLLM[ClientT, ContextT: Context](ABC):
     @staticmethod
     def save_mutations(
             query_record: QueryRecord,
-            events: list[ToolEvent]
+            events: list[ToolCall]
     ) -> None:
         for event in events:
             event_output = event.output
