@@ -210,7 +210,8 @@ class ActiveMemory(LogElement):
     def to_log(self) -> dict:
         return {
             "short_memory": self.short_memory.to_log(),
-            "long_memory": self.long_memory.to_log()
+            "long_memory": self.long_memory.to_log(),
+            "context": self.format_context()
         }
 
     @staticmethod

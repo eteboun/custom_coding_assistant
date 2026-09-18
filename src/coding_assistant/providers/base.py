@@ -101,18 +101,19 @@ class BaseLLM[ClientT](ABC):
         self.memory.start_session(query=query)
 
         query_log = QueryLog(
-            query=query,
-            initial_memory=self.memory.to_log()
+            query=query
         )
 
         output_text: str | None = None
         completed = False
 
         try:
+            initial_memory = self.memory.to_log()
             response = self.generate()
 
             for i in range(self.config.max_iters):
                 usage = self.usage(response=response)
+
                 tool_calls = self.tool_call_contract(response)
 
                 if not tool_calls:
@@ -120,6 +121,7 @@ class BaseLLM[ClientT](ABC):
                     completed = True
 
                     query_log.add_llm_call(LLMFinalCallLog(
+                        initial_memory=initial_memory,
                         usage=usage,
                         response=output_text
                     ))
@@ -164,13 +166,15 @@ class BaseLLM[ClientT](ABC):
 
                 query_log.add_llm_call(LLMToolEventLog(
                     usage=usage,
-                    memory=self.memory.to_log(),
+                    initial_memory=initial_memory,
+                    final_memory=self.memory.to_log(),
                     events=[
                         event.to_log()
                         for event in events
                     ]
                 ))
 
+                initial_memory = self.memory.to_log()
                 response = self.generate()
 
         finally:
@@ -179,7 +183,7 @@ class BaseLLM[ClientT](ABC):
                 completed=completed
             )
 
-            query_log.final_memory = self.memory.to_log()
+            query_log.session_final_memory = self.memory.to_log()
 
             self.logger.add_query_log(
                 query_log=query_log

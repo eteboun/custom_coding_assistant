@@ -72,7 +72,8 @@ class ToolOutput(LogElement, ContextElement):
                 self.learning_metadata.to_log()
                 if self.learning_metadata is not None
                 else None
-            )
+            ),
+            "output": self.output.to_log()
         }
 
     def to_context(self) -> dict:

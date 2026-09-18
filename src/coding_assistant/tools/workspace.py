@@ -40,8 +40,19 @@ class Workspace:
             ) from e
 
         if result.returncode not in (0, 1):
+            message = result.stderr.strip()
+
+            if "regex parse error" in message:
+                raise ToolUsageError(
+                    "When using regex search, provide a valid ripgrep regular expression.",
+                    learning=LearningMetadata(
+                        persistent=True,
+                        key="ripgrep.invalid_regex"
+                    )
+                )
+
             raise ToolEnvironmentError(
-                f"ripgrep failed: {result.stderr.strip()}"
+                f"ripgrep failed: {message}"
             )
 
         return result
@@ -201,6 +212,7 @@ class Workspace:
     def search_text(
             self,
             text: str,
+            regex: bool = False,
             context_lines: int = 2,
             max_output_lines: int = 100
     ) -> ToolOutput:
@@ -210,9 +222,15 @@ class Workspace:
             "--json",
             "-C",
             str(context_lines),
+        ]
+
+        if not regex:
+            cmd.append("--fixed-strings")
+
+        cmd.extend([
             text,
             self.repo_path.as_posix()
-        ]
+        ])
 
         for file in self.blocked_files:
             cmd.extend(["-g", f"!{file}"])

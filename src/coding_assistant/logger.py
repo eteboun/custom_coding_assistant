@@ -10,22 +10,28 @@ from .models.schema import TokenUsage
 
 @dataclass
 class LLMCallLog(LogElement):
+    initial_memory: dict[str, Any]
     usage: TokenUsage
 
     def to_log(self) -> dict:
-        return self.usage.to_log()
+        return {
+            "initial_memory": self.initial_memory,
+            "usage": self.usage.to_log()
+        }
+
 
 @dataclass
 class LLMToolEventLog(LLMCallLog):
-    memory: dict[str, Any]
     events: list[dict]
+    final_memory: dict[str, Any]
 
     def to_log(self) -> dict:
         return {
-            "usage": super().to_log(),
+            **super().to_log(),
             "events": self.events,
-            "memory": self.memory
+            "final_memory": self.final_memory
         }
+
 
 @dataclass
 class LLMFinalCallLog(LLMCallLog):
@@ -33,15 +39,14 @@ class LLMFinalCallLog(LLMCallLog):
 
     def to_log(self) -> dict:
         return {
-            "usage": super().to_log(),
+            **super().to_log(),
             "response": self.response
         }
 
 @dataclass
 class QueryLog(LogElement):
     query: str
-    initial_memory: dict[str, Any]
-    final_memory: dict[str, Any] = field(
+    session_final_memory: dict[str, Any] = field(
         init=False,
         default_factory=dict,
     )
@@ -64,8 +69,7 @@ class QueryLog(LogElement):
     def to_log(self) -> dict:
         return {
             "query": self.query,
-            "initial_memory": self.initial_memory,
-            "final_memory": self.final_memory,
+            "session_final_memory": self.session_final_memory,
             "llm_calls": [
                 llm_call.to_log()
                 for llm_call in self.llm_calls
@@ -78,11 +82,14 @@ class Logger(LogElement):
     log_path: Path
     query_logs: list[QueryLog] = field(default_factory=list)
 
-    def to_log(self) -> list[dict[str, Any]]:
-        return [
-            query_log.to_log()
-            for query_log in self.query_logs
-        ]
+    def to_log(self) -> dict[str, Any]:
+        return {
+                "queries": [
+                    query_log.to_log()
+                    for query_log in self.query_logs
+                ],
+                "total_usage": self.total_usage().to_log()
+            }
 
     def total_usage(self) -> TokenUsage:
         usage = TokenUsage()

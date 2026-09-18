@@ -196,19 +196,26 @@ class Tools:
             properties={
                 "query": {
                     "type": "string",
-                    "description": "Text or regular expression to search for.",
+                    "description": "Text or regular expression to search for."
                 },
                 "context_lines": {
                     "type": "integer",
-                    "description": "Surrounding lines per match.",
+                    "description": "Surrounding lines per match."
                 },
                 "max_output_lines": {
                     "type": "integer",
-                    "description": "Maximum output lines.",
+                    "description": "Maximum output lines."
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": (
+                            "Whether to interpret text as a ripgrep regular expression. "
+                            "If false, text is matched literally."
+                    )
                 }
             },
             required=["query"],
-            additional_properties=False,
+            additional_properties=False
         ),
         metadata=Metadata(
             update_scope=UpdateScope.REPOSITORY,
@@ -222,12 +229,14 @@ class Tools:
     def search_text(self,
                     query: str,
                     context_lines: int = 2,
+                    regex: bool = False,
                     max_output_lines: int = 100
                     ) -> ToolOutput:
         return self.workspace.search_text(
             text=query,
             context_lines=context_lines,
-            max_output_lines=max_output_lines
+            max_output_lines=max_output_lines,
+            regex=regex
         )
 
     @_tool(
