@@ -9,7 +9,6 @@ from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
 
-from ..memory.memory import LongMemory
 from ..models.schema import TokenUsage
 from ..config import Config
 from ..tools.context import ToolCall
@@ -19,16 +18,14 @@ class OpenAILLM(BaseLLM[OpenAI]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config,
-            long_memory: LongMemory | None = None
+            config: Config
     ):
         super().__init__(
             instructions=instructions,
             repo_path=repo_path,
             config=config,
             provider="openai",
-            client=OpenAI(),
-            long_memory=long_memory
+            client=OpenAI()
         )
 
     @override

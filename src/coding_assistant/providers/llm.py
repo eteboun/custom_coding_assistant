@@ -9,13 +9,11 @@ from .anthropic import AnthropicLLM
 from ..config import Config
 
 from ..models.models import models_data
-from ..memory.memory import LongMemory
 
 def create_llm(
         instructions: str,
         repo_path: Path,
-        config: Config,
-        long_memory: LongMemory | None = None
+        config: Config
 ) -> BaseLLM:
     model_data = models_data.models.get(config.model_name)
 
@@ -29,24 +27,21 @@ def create_llm(
             return OpenAILLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config,
-                long_memory=long_memory
+                config=config
             )
 
         case "google":
             return GeminiLLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config,
-                long_memory=long_memory
+                config=config
             )
 
         case "anthropic":
             return AnthropicLLM(
                 instructions=instructions,
                 repo_path=repo_path,
-                config=config,
-                long_memory=long_memory
+                config=config
             )
 
         case _:

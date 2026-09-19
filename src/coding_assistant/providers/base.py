@@ -24,9 +24,7 @@ class BaseLLM[ClientT](ABC):
         config: Config,
         client: ClientT,
         provider: ProviderId,
-        *,
-        long_memory: LongMemory | None,
-    ):
+        ):
         self.config = config
         self.client = client
         self.instructions = instructions
@@ -53,11 +51,7 @@ class BaseLLM[ClientT](ABC):
 
         self.memory = ActiveMemory(
             executor=self.executor,
-            long_memory=(
-                long_memory
-                if long_memory is not None
-                else LongMemory()
-            ),
+            long_memory=LongMemory(),
             short_memory=ShortMemory()
         )
 

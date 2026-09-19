@@ -6,7 +6,6 @@ from google.genai._gaos.types.interactions import Interaction
 
 from .base import BaseLLM
 
-from ..memory.memory import LongMemory
 from ..models.schema import TokenUsage
 from ..config import Config
 from ..tools.context import ToolCall
@@ -16,16 +15,14 @@ class GeminiLLM(BaseLLM[genai.Client]):
             self,
             instructions: str,
             repo_path: Path,
-            config: Config,
-            long_memory: LongMemory | None = None
+            config: Config
     ):
         super().__init__(
             instructions=instructions,
             repo_path=repo_path,
             config=config,
             provider="google",
-            client=genai.Client(),
-            long_memory=long_memory
+            client=genai.Client()
         )
 
     @override
