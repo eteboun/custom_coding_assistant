@@ -6,10 +6,10 @@ from pathlib import Path
 from .schema import ToolSchema, Parameters, Metadata
 from .context import Invalidation, ToolOutput, Operation, UpdateScope
 from .workspace import Workspace
+from .sandbox import Sandbox
 
 
 class Tools:
-
     def __init__(self,
                  repo_path: Path,
                  blocked_files: list[str],
@@ -20,6 +20,9 @@ class Tools:
             repo_path=repo_path,
             blocked_files=blocked_files,
             blocked_dirs=blocked_dirs
+        )
+        self.sandbox = Sandbox(
+            repo_path=repo_path
         )
 
         self.function_mapping = self._tool_function_mapping()
@@ -359,3 +362,31 @@ class Tools:
     )
     def repo_tree(self) -> ToolOutput:
         return self.workspace.repo_tree()
+
+    @_tool(
+        description=(
+            "Execute a shell command in the repository sandbox for testing, "
+            "building, validation, or runtime diagnostics. Do not use this tool "
+            "for reading, searching, or intentionally modifying repository source "
+            "files when a dedicated tool exists."
+        ),
+        parameters=Parameters(
+            properties={
+                "command": {
+                    "type": "string",
+                    "description": "The shell command to execute."
+                }
+            },
+            required=["command"],
+            additional_properties=False
+        ),
+        metadata=Metadata(
+            update_scope=None,
+            update_when={},
+            approval_required=True
+        )
+    )
+    def run_command(self, command: str) -> ToolOutput:
+        return self.sandbox.run_command(
+            command=command
+        )

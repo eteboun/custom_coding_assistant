@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass, field
 
-from ..tools.executor import Executor
+from ..tools.api import ToolsAPI
 from ..tools.context import (ToolCall, ToolOutput, UpdateScope,
                                             Operation, Mutation, Invalidation, LearningMetadata)
 from ..utils import LogElement, ContextElement
@@ -202,7 +202,7 @@ class ShortMemory(LogElement):
 
 @dataclass
 class ActiveMemory(LogElement):
-    executor: Executor
+    tools_api: ToolsAPI
     short_memory: ShortMemory
     long_memory: LongMemory
     current_query: str | None = None
@@ -278,7 +278,7 @@ class ActiveMemory(LogElement):
                 updated_events.append(saved_event)
 
             elif invalidation == Invalidation.REFRESH:
-                saved_event.output = self.executor.execute_call(
+                saved_event.output = self.tools_api.execute_call(
                     call=saved_event.call
                 )
 

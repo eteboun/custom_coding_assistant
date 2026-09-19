@@ -10,8 +10,7 @@ from ..config import Config
 
 from ..utils import MaxIterationsError
 
-from ..tools.content import Tools
-from ..tools.executor import Executor
+from ..tools.api import ToolsAPI, ToolsAPIConfig
 from ..tools.context import ToolCall
 
 from ..logger import QueryLog, Logger, LLMToolEventLog, LLMFinalCallLog
@@ -39,18 +38,16 @@ class BaseLLM[ClientT](ABC):
             reasoning=config.reasoning
         )
 
-        self.tools = Tools(
-            repo_path=repo_path,
-            blocked_files=config.blocked_files,
-            blocked_dirs=config.blocked_dirs
-        )
-
-        self.executor = Executor(
-            tools=self.tools
+        self.tools_api = ToolsAPI(
+            config=ToolsAPIConfig(
+                repo_path=repo_path,
+                blocked_files=config.blocked_files,
+                blocked_dirs=config.blocked_dirs
+            )
         )
 
         self.memory = ActiveMemory(
-            executor=self.executor,
+            tools_api=self.tools_api,
             long_memory=LongMemory(),
             short_memory=ShortMemory()
         )
@@ -128,31 +125,27 @@ class BaseLLM[ClientT](ABC):
                         f"{self.config.max_iters}"
                     )
 
-                tool_outputs = [
-                    self.executor.execute_call(call=call)
+                responses = [
+                    self.tools_api.execute_call(call=call)
                     for call in tool_calls
                 ]
 
                 events: list[ToolEvent] = []
-                for tool_call, tool_output in zip(
-                        tool_calls, tool_outputs
+                for tool_call, response in zip(
+                        tool_calls, responses
                 ):
-                    if tool_output.is_fail():
+                    if response.is_fail():
                         events.append(ToolEvent(
                             call=tool_call,
-                            output=tool_output
+                            output=response.output
                         ))
                         continue
 
-                    metadata = self.tools.data_mapping[
-                        tool_call.name
-                    ].metadata
-
                     events.append(ToolEvent(
                         call=tool_call,
-                        output=tool_output,
-                        update_when=metadata.update_when,
-                        update_scope=metadata.update_scope
+                        output=response.output,
+                        update_when=response.update_when,
+                        update_scope=response.update_scope
                     ))
 
                 for event in events:

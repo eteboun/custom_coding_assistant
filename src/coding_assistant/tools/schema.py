@@ -18,6 +18,7 @@ class Metadata:
     update_scope: UpdateScope | None
     update_when: dict[Operation, Invalidation]
     mutative: bool = False
+    approval_required: bool = False
 
 
 @dataclass(frozen=True)
