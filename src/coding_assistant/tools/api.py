@@ -69,7 +69,7 @@ class ToolsAPI:
         if tool is None or tool.metadata.approval is None:
             return None
 
-        return tool.metadata.approval.message_template.format(
+        return tool.metadata.approval.template.format(
             **call.args
         )
 

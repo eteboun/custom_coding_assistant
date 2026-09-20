@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Self
 import json
 
-_BASE_DIR = Path(__file__).resolve().parent
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 instructions = (
     _BASE_DIR / "instructions.md"

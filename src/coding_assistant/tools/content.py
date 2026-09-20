@@ -22,7 +22,9 @@ class Tools:
             blocked_dirs=blocked_dirs
         )
         self.sandbox = Sandbox(
-            repo_path=repo_path
+            repo_path=repo_path,
+            blocked_files=blocked_files,
+            blocked_dirs=blocked_dirs,
         )
 
         self.function_mapping = self._tool_function_mapping()

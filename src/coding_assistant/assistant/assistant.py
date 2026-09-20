@@ -9,7 +9,7 @@ from ..models.models import models_by_provider, models_data
 from ..providers.llm import create_llm
 
 from ..models.operations import adjust_reasoning, is_valid_reasoning
-from ..tools.api import ToolsAPI, ToolsAPIConfig, ToolsAPIResponse
+from ..tools.api import ToolsAPI, ToolsAPIConfig
 from ..utils import RecoverableError, CommandError, ConfigError, MaxIterationsError
 from .session import QuerySession
 
@@ -91,8 +91,14 @@ class Assistant:
                             )
                         )
 
-                        session.complete(output_text)
+                        session.complete_loop(output_text)
                         return output_text
+
+                    call_log = LLMToolEventLog(
+                        usage=usage,
+                        initial_memory=initial_memory,
+                    )
+                    session.add_llm_call(call_log)
 
                     if i == self.config.max_iters - 1:
                         raise MaxIterationsError(
@@ -100,66 +106,31 @@ class Assistant:
                             f"{self.config.max_iters}"
                         )
 
-                    tool_responses: list[ToolsAPIResponse] = []
-
                     for call in tool_calls:
-                        if (
-                                message := api.approval_message(
-                                    call=call
-                                )
-                        ) is not None:
+                        message = api.approval_message(call=call)
+                        if message is not None and not self.get_approval(message=message):
+                            tool_response = api.denied_response(call=call)
+                        else:
+                            tool_response = api.execute_call(call=call)
 
-                            if not self.get_approval(message=message):
-                                tool_responses.append(
-                                    api.denied_response(call=call)
-                                )
-                                continue
-
-                        tool_responses.append(
-                            api.execute_call(call=call)
-                        )
-
-                    events: list[ToolEvent] = []
-
-                    for tool_call, tool_response in zip(
-                            tool_calls,
-                            tool_responses,
-                    ):
                         if tool_response.is_fail():
-                            events.append(
-                                ToolEvent(
-                                    call=tool_call,
-                                    output=tool_response.output,
-                                )
+                            event = ToolEvent(
+                                call=call,
+                                output=tool_response.output,
                             )
-                            continue
-
-                        events.append(
-                            ToolEvent(
-                                call=tool_call,
+                        else:
+                            event = ToolEvent(
+                                call=call,
                                 output=tool_response.output,
                                 update_when=tool_response.update_when,
                                 update_scope=tool_response.update_scope,
                             )
-                        )
 
-                    for event in events:
+                        call_log.events.append(event.to_log())
                         session.add_event(event)
 
                     final_memory = session.memory_log()
-
-                    session.add_llm_call(
-                        LLMToolEventLog(
-                            usage=usage,
-                            initial_memory=initial_memory,
-                            final_memory=final_memory,
-                            events=[
-                                event.to_log()
-                                for event in events
-                            ],
-                        )
-                    )
-
+                    call_log.final_memory = final_memory
                     initial_memory = final_memory
 
                     response = self.llm.generate(

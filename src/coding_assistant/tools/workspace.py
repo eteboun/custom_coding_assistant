@@ -1,11 +1,18 @@
 import subprocess
 import json
+import os
+import shutil
+import uuid
 from pathlib import Path
 from typing import ClassVar
 
 from .apply_patch import _parse_patch, _apply_update, _parse_added_file
 from .context import ToolOutput, Mutation, Operation, ToolUsageError, LearningMetadata
 from ..utils import OutputProtocol, ToolEnvironmentError
+
+
+class PatchRollbackError(Exception):
+    pass
 
 class Workspace:
 
@@ -431,6 +438,9 @@ class Workspace:
 
         pending_writes: dict[Path, str] = {}
         pending_deletes: set[Path] = set()
+        original_paths: set[Path] = set()
+        canonical_paths: dict[str, str] = {}
+        resolved_targets: dict[str, str] = {}
 
         for file_patch in file_patches:
             if file_patch.operation == "update":
@@ -452,6 +462,7 @@ class Workspace:
                     ) from e
 
                 pending_writes[full_path] = new_content
+                original_paths.add(full_path)
 
             elif file_patch.operation == "delete":
                 resolved = self._resolve_file(file_patch.path)
@@ -464,6 +475,7 @@ class Workspace:
                     )
 
                 pending_deletes.add(full_path)
+                original_paths.add(full_path)
 
             elif file_patch.operation == "add":
                 resolved = self._resolve_path(file_patch.path)
@@ -485,6 +497,19 @@ class Workspace:
 
                 pending_writes[full_path] = new_content
 
+            canonical_key = os.path.normcase(os.fspath(full_path))
+            previous = resolved_targets.get(canonical_key)
+            if previous is not None:
+                raise ToolUsageError(
+                    f"Patch paths {previous!r} and {file_patch.path!r} "
+                    "resolve to the same file."
+                )
+
+            resolved_targets[canonical_key] = file_patch.path
+            canonical_paths[file_patch.path] = full_path.relative_to(
+                self.repo_path
+            ).as_posix()
+
         if pending_deletes & pending_writes.keys():
             raise ToolUsageError(
                 "A file cannot be both written and deleted.",
@@ -494,38 +519,153 @@ class Workspace:
                 )
             )
 
-        for path in pending_deletes:
-            path.unlink()
+        staged_writes: dict[Path, Path] = {}
+        created_directories: list[Path] = []
 
-        for path, content in pending_writes.items():
-            path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            for path, content in pending_writes.items():
+                missing_directories: list[Path] = []
+                parent = path.parent
 
-            with open(
-                    path,
-                    "w",
-                    encoding="utf-8",
-                    newline="",
-            ) as f:
-                f.write(content)
+                while not parent.exists():
+                    missing_directories.append(parent)
+                    parent = parent.parent
+
+                for directory in reversed(missing_directories):
+                    directory.mkdir()
+                    created_directories.append(directory)
+
+                staged_path = path.with_name(
+                    f".{path.name}.coding-agent-stage-{uuid.uuid4().hex}"
+                )
+                descriptor = os.open(
+                    staged_path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o666,
+                )
+
+                try:
+                    with os.fdopen(
+                            descriptor,
+                            "w",
+                            encoding="utf-8",
+                            newline="",
+                    ) as file:
+                        file.write(content)
+                        file.flush()
+                        os.fsync(file.fileno())
+                except Exception:
+                    staged_path.unlink(missing_ok=True)
+                    raise
+
+                staged_writes[path] = staged_path
+
+                if path in original_paths:
+                    shutil.copystat(path, staged_path)
+
+        except Exception:
+            for staged_path in staged_writes.values():
+                staged_path.unlink(missing_ok=True)
+
+            for directory in reversed(created_directories):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+
+            raise
+
+        backups = {
+            path: path.with_name(
+                f".{path.name}.coding-agent-backup-{uuid.uuid4().hex}"
+            )
+            for path in original_paths
+        }
+        moved_backups: list[tuple[Path, Path]] = []
+        installed_paths: list[Path] = []
+
+        try:
+            for path in sorted(original_paths):
+                backup = backups[path]
+                os.replace(path, backup)
+                moved_backups.append((path, backup))
+
+            for path, staged_path in staged_writes.items():
+                os.replace(staged_path, path)
+                installed_paths.append(path)
+
+        except Exception as commit_error:
+            rollback_errors: list[tuple[Path, Exception]] = []
+
+            for path in reversed(installed_paths):
+                if path not in backups:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except Exception as error:
+                        rollback_errors.append((path, error))
+
+            for path, backup in reversed(moved_backups):
+                try:
+                    os.replace(backup, path)
+                except Exception as error:
+                    rollback_errors.append((path, error))
+
+            for staged_path in staged_writes.values():
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except Exception as error:
+                    rollback_errors.append((staged_path, error))
+
+            for directory in reversed(created_directories):
+                try:
+                    directory.rmdir()
+                except OSError as error:
+                    if directory.exists():
+                        rollback_errors.append((directory, error))
+
+            if rollback_errors:
+                paths = ", ".join(
+                    sorted({path.as_posix() for path, _ in rollback_errors})
+                )
+                raise PatchRollbackError(
+                    "Patch application failed and rollback was incomplete. "
+                    f"The following paths may be inconsistent: {paths}"
+                ) from commit_error
+
+            raise
+
+        cleanup_warnings: list[str] = []
+        for _, backup in moved_backups:
+            try:
+                backup.unlink()
+            except OSError:
+                cleanup_warnings.append(backup.as_posix())
 
         files = tuple(sorted(
             {
-                Path(patch.path).as_posix()
+                canonical_paths[patch.path]
                 for patch in file_patches
             }
         ))
 
         mutations = tuple(
             Mutation(
-                path=patch.path,
+                path=canonical_paths[patch.path],
                 type=patch.operation
             ) for patch in file_patches
         )
 
+        message = "Successfully applied patch."
+        if cleanup_warnings:
+            message += (
+                " Original-file backups could not be removed: "
+                + ", ".join(cleanup_warnings)
+            )
+
         return ToolOutput(
             output=OutputProtocol(
                 status="success",
-                content="Successfully applied patch."
+                content=message
             ),
             files=files,
             mutations=mutations

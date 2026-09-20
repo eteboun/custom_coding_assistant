@@ -23,7 +23,7 @@ class QuerySession:
         )
 
         self.output: str | None = None
-        self.completed = False
+        self.loop_completed = False
 
     def __enter__(self) -> Self:
         self.memory.start_session(
@@ -42,7 +42,7 @@ class QuerySession:
         try:
             self.memory.finish_session(
                 output=self.output,
-                completed=self.completed,
+                loop_completed=self.loop_completed,
             )
         except Exception as error:
             cleanup_errors.append(error)
@@ -84,6 +84,6 @@ class QuerySession:
     def context(self) -> str:
         return self.memory.format_context()
 
-    def complete(self, output: str) -> None:
+    def complete_loop(self, output: str) -> None:
         self.output = output
-        self.completed = True
+        self.loop_completed = True

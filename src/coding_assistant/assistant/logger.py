@@ -22,8 +22,8 @@ class LLMCallLog(LogElement):
 
 @dataclass
 class LLMToolEventLog(LLMCallLog):
-    events: list[dict]
-    final_memory: dict[str, Any]
+    events: list[dict] = field(default_factory=list)
+    final_memory: dict[str, Any] | None = None
 
     def to_log(self) -> dict:
         return {

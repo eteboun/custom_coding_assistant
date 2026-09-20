@@ -27,7 +27,7 @@ class MutationSummary(LogElement, ContextElement):
 class QueryRecord(LogElement, ContextElement):
     query: str
     final_response: str
-    completed: bool
+    loop_completed: bool
     mutation_summaries: list[MutationSummary]
 
     def to_log(self) -> dict:
@@ -38,7 +38,7 @@ class QueryRecord(LogElement, ContextElement):
                 mutation.to_log()
                 for mutation in self.mutation_summaries
             ],
-            "completed": self.completed
+            "loop_completed": self.loop_completed
         }
 
     def to_context(self) -> dict:
@@ -116,14 +116,18 @@ class Learning(LogElement, ContextElement):
     tool: str
     args: dict
     message: str
-    metadata: LearningMetadata
+    metadata: LearningMetadata | None = None
 
     def to_log(self) -> dict:
         return {
             "tool": self.tool,
             "args": self.args,
             "message": self.message,
-            "metadata": self.metadata.to_log()
+            "metadata": (
+                self.metadata.to_log()
+                if self.metadata is not None
+                else None
+            )
         }
 
     def to_context(self) -> dict:
@@ -134,7 +138,7 @@ class Learning(LogElement, ContextElement):
         }
 
     def to_persistent(self) -> PersistentLearning:
-        if not self.metadata.persistent:
+        if self.metadata is None or not self.metadata.persistent:
             raise ValueError(
                 "Transient learning cannot be persisted."
             )
@@ -299,31 +303,39 @@ class ActiveMemory(LogElement):
 
     def finish_session(
             self,
-            completed: bool = False,
+            loop_completed: bool = False,
             output: str | None = None,
     ) -> None:
         if self.current_query is None:
             raise RuntimeError("No active session")
 
-        query_record = QueryRecord(
-            query=self.current_query,
-            mutation_summaries=list(
-                self.short_memory.pending_mutations
-            ),
-            final_response=output,
-            completed=completed,
-        )
-
-        for learning in self.short_memory.learnings:
-            if learning.metadata.persistent:
-                self.long_memory.add_learning(
-                    learning.to_persistent()
-                )
-
-        self.long_memory.query_records.append(query_record)
+        current_query = self.current_query
+        short_memory = self.short_memory
 
         self.short_memory = ShortMemory()
         self.current_query = None
+
+        query_record = QueryRecord(
+            query=current_query,
+            mutation_summaries=list(
+                short_memory.pending_mutations
+            ),
+            final_response=output,
+            loop_completed=loop_completed,
+        )
+
+        persistent_learnings = [
+            learning.to_persistent()
+            for learning in short_memory.learnings
+            if (
+                learning.metadata is not None
+                and learning.metadata.persistent
+            )
+        ]
+
+        for learning in persistent_learnings:
+            self.long_memory.add_learning(learning)
+        self.long_memory.query_records.append(query_record)
 
     def start_session(self, query: str) -> None:
         if self.current_query is not None:
