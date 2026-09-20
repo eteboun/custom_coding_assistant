@@ -1,28 +1,20 @@
-from pathlib import Path
 from abc import ABC, abstractmethod
-
-from coding_assistant.memory.memory import ActiveMemory, ShortMemory, LongMemory, ToolEvent
 
 from ..models.operations import resolve_reasoning, resolve_model
 from ..models.schema import ProviderId, TokenUsage, ReasoningLevel
 
-from ..config import Config
+from coding_assistant.assistant.config import Config
 
-from ..utils import MaxIterationsError
-
-from ..tools.api import ToolsAPI, ToolsAPIConfig
 from ..tools.context import ToolCall
-
-from ..logger import QueryLog, Logger, LLMToolEventLog, LLMFinalCallLog
+from ..tools.schema import ToolSchema
 
 class BaseLLM[ClientT](ABC):
     def __init__(
         self,
         instructions: str,
-        repo_path: Path,
         config: Config,
         client: ClientT,
-        provider: ProviderId,
+        provider: ProviderId
         ):
         self.config = config
         self.client = client
@@ -37,25 +29,6 @@ class BaseLLM[ClientT](ABC):
             model_data=self.model_data,
             reasoning=config.reasoning
         )
-
-        self.tools_api = ToolsAPI(
-            config=ToolsAPIConfig(
-                repo_path=repo_path,
-                blocked_files=config.blocked_files,
-                blocked_dirs=config.blocked_dirs
-            )
-        )
-
-        self.memory = ActiveMemory(
-            tools_api=self.tools_api,
-            long_memory=LongMemory(),
-            short_memory=ShortMemory()
-        )
-
-        self.logger = Logger(
-            log_path=config.log_path
-        )
-
 
     def update_reasoning(self, reasoning: ReasoningLevel | None) -> None:
         reasoning = resolve_reasoning(
@@ -78,100 +51,13 @@ class BaseLLM[ClientT](ABC):
         ...
 
     @abstractmethod
-    def tool_contract(self):
+    def tool_schema_contract(self, tools: list[ToolSchema]):
         ...
 
     @abstractmethod
-    def generate(self):
+    def generate(
+            self,
+            context: str,
+            tools: list[ToolSchema]
+            ):
         ...
-
-    def log(self) -> str:
-        return self.logger.log()
-
-    def run(self, query: str) -> str:
-        self.memory.start_session(query=query)
-
-        query_log = QueryLog(
-            query=query
-        )
-
-        output_text: str | None = None
-        completed = False
-
-        try:
-            initial_memory = self.memory.to_log()
-            response = self.generate()
-
-            for i in range(self.config.max_iters):
-                usage = self.usage(response=response)
-
-                tool_calls = self.tool_call_contract(response)
-
-                if not tool_calls:
-                    output_text = self.output_text(response)
-                    completed = True
-
-                    query_log.add_llm_call(LLMFinalCallLog(
-                        initial_memory=initial_memory,
-                        usage=usage,
-                        response=output_text
-                    ))
-
-                    return output_text
-
-                if i == self.config.max_iters - 1:
-                    raise MaxIterationsError(
-                        f"Maximum iteration limit reached: "
-                        f"{self.config.max_iters}"
-                    )
-
-                responses = [
-                    self.tools_api.execute_call(call=call)
-                    for call in tool_calls
-                ]
-
-                events: list[ToolEvent] = []
-                for tool_call, response in zip(
-                        tool_calls, responses
-                ):
-                    if response.is_fail():
-                        events.append(ToolEvent(
-                            call=tool_call,
-                            output=response.output
-                        ))
-                        continue
-
-                    events.append(ToolEvent(
-                        call=tool_call,
-                        output=response.output,
-                        update_when=response.update_when,
-                        update_scope=response.update_scope
-                    ))
-
-                for event in events:
-                    self.memory.add_event(event)
-
-                query_log.add_llm_call(LLMToolEventLog(
-                    usage=usage,
-                    initial_memory=initial_memory,
-                    final_memory=self.memory.to_log(),
-                    events=[
-                        event.to_log()
-                        for event in events
-                    ]
-                ))
-
-                initial_memory = self.memory.to_log()
-                response = self.generate()
-
-        finally:
-            self.memory.finish_session(
-                output=output_text,
-                completed=completed
-            )
-
-            query_log.session_final_memory = self.memory.to_log()
-
-            self.logger.add_query_log(
-                query_log=query_log
-            )

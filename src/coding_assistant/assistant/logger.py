@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 import json
 
-from .utils import LogElement, LogError
-from .models.schema import TokenUsage
+from ..utils import LogElement, LogError
+from ..models.schema import TokenUsage
 
 
 @dataclass

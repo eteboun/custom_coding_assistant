@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from .context import UpdateScope, Operation, Invalidation
 
 @dataclass(frozen=True)
+class Approval:
+    template: str
+
+
+@dataclass(frozen=True)
 class Parameters:
     properties: dict[str, dict]
     required: list[str]
@@ -18,7 +23,7 @@ class Metadata:
     update_scope: UpdateScope | None
     update_when: dict[Operation, Invalidation]
     mutative: bool = False
-    approval_required: bool = False
+    approval: Approval | None = None
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 
 from google import genai
@@ -7,26 +6,31 @@ from google.genai._gaos.types.interactions import Interaction
 from .base import BaseLLM
 
 from ..models.schema import TokenUsage
-from ..config import Config
+from coding_assistant.assistant.config import Config
+from ..tools.schema import ToolSchema
 from ..tools.context import ToolCall
+
 
 class GeminiLLM(BaseLLM[genai.Client]):
     def __init__(
             self,
             instructions: str,
-            repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            repo_path=repo_path,
             config=config,
             provider="google",
             client=genai.Client()
         )
 
+
     @override
-    def generate(self) -> Interaction:
+    def generate(
+            self,
+            context: str,
+            tools: list[ToolSchema]
+            ) -> Interaction:
         kwargs = {}
 
         if self.reasoning is not None:
@@ -36,9 +40,11 @@ class GeminiLLM(BaseLLM[genai.Client]):
 
         response = self.client.interactions.create(
             model=self.model_data.id,
-            input=self.memory.format_context(),
+            input=context,
             system_instruction=self.instructions,
-            tools=self.tool_contract(),
+            tools=self.tool_schema_contract(
+                tools=tools
+            ),
             **kwargs
         )
 
@@ -75,7 +81,7 @@ class GeminiLLM(BaseLLM[genai.Client]):
         ]
 
     @override
-    def tool_contract(self) -> list[dict]:
+    def tool_schema_contract(self, tools: list[ToolSchema]) -> list[dict]:
         return [
             {
                 "type": "function",
@@ -87,5 +93,5 @@ class GeminiLLM(BaseLLM[genai.Client]):
                     "required": tool_data.parameters.required
                 }
             }
-            for tool_data in self.tools.data_mapping.values()
+            for tool_data in tools
         ]

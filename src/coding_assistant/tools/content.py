@@ -3,7 +3,7 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 
-from .schema import ToolSchema, Parameters, Metadata
+from .schema import ToolSchema, Parameters, Metadata, Approval
 from .context import Invalidation, ToolOutput, Operation, UpdateScope
 from .workspace import Workspace
 from .sandbox import Sandbox
@@ -383,7 +383,9 @@ class Tools:
         metadata=Metadata(
             update_scope=None,
             update_when={},
-            approval_required=True
+            approval=Approval(
+                template="Agent wants to run this command: {command}"
+            )
         )
     )
     def run_command(self, command: str) -> ToolOutput:

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 import json
 
@@ -8,28 +7,31 @@ from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
+from ..tools.schema import ToolSchema
 
 from ..models.schema import TokenUsage
-from ..config import Config
+from coding_assistant.assistant.config import Config
 from ..tools.context import ToolCall
 
 class OpenAILLM(BaseLLM[OpenAI]):
     def __init__(
             self,
             instructions: str,
-            repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            repo_path=repo_path,
             config=config,
             provider="openai",
             client=OpenAI()
         )
 
     @override
-    def generate(self) -> Response:
+    def generate(
+            self,
+            context: str,
+            tools: list[ToolSchema]
+            ) -> Response:
         kwargs = {}
 
         if self.reasoning is not None:
@@ -40,8 +42,10 @@ class OpenAILLM(BaseLLM[OpenAI]):
         response = self.client.responses.create(
             model=self.model_data.id,
             instructions=self.instructions,
-            input=self.memory.format_context(),
-            tools=self.tool_contract(),
+            input=context,
+            tools=self.tool_schema_contract(
+                tools=tools
+            ),
             **kwargs
         )
 
@@ -78,7 +82,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
         ]
 
     @override
-    def tool_contract(self) -> list[FunctionToolParam]:
+    def tool_schema_contract(self, tools: list[ToolSchema]) -> list[FunctionToolParam]:
         return [
             {
                 "type": "function",
@@ -92,5 +96,5 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 },
                 "strict": tool_data.strict,
             }
-            for tool_data in self.tools.data_mapping.values()
+            for tool_data in tools
         ]

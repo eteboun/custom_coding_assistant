@@ -1,5 +1,5 @@
 from .schema import ModelsData, ModelData, ProviderId
-from ..config import models_json
+from coding_assistant.assistant.config import models_json
 
 def _load_models() -> ModelsData:
     with open(models_json) as f:

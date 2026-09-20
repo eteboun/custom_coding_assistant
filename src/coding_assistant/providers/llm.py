@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import assert_never
 
 from .base import BaseLLM
@@ -6,13 +5,12 @@ from .google import GeminiLLM
 from .openai import OpenAILLM
 from .anthropic import AnthropicLLM
 
-from ..config import Config
+from coding_assistant.assistant.config import Config
 
 from ..models.models import models_data
 
 def create_llm(
         instructions: str,
-        repo_path: Path,
         config: Config
 ) -> BaseLLM:
     model_data = models_data.models.get(config.model_name)
@@ -26,21 +24,18 @@ def create_llm(
         case "openai":
             return OpenAILLM(
                 instructions=instructions,
-                repo_path=repo_path,
                 config=config
             )
 
         case "google":
             return GeminiLLM(
                 instructions=instructions,
-                repo_path=repo_path,
                 config=config
             )
 
         case "anthropic":
             return AnthropicLLM(
                 instructions=instructions,
-                repo_path=repo_path,
                 config=config
             )
 

@@ -1,9 +1,12 @@
 import subprocess
 import uuid
+from logging import getLogger
 from pathlib import Path
 
 from .context import ToolOutput, ToolUsageError
 from ..utils import OutputProtocol
+
+logger = getLogger(__name__)
 
 class SandboxError(Exception):
     pass
@@ -33,60 +36,78 @@ class Sandbox:
         if self._started:
             return
 
-        result = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--detach",
-                "--name",
-                self.container_name,
-                "--network",
-                "none",
-                "--memory",
-                self.memory,
-                "--cpus",
-                str(self.cpus),
-                "--pids-limit",
-                str(self.pids_limit),
-                "--mount",
-                f"type=bind,source={self.repo_path},target=/workspace",
-                "--workdir",
-                "/workspace",
-                self.image,
-                "sleep",
-                "infinity",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            raise SandboxError(
-                f"Failed to start sandbox: {result.stderr.strip()}"
+        try:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--detach",
+                    "--name",
+                    self.container_name,
+                    "--network",
+                    "none",
+                    "--memory",
+                    self.memory,
+                    "--cpus",
+                    str(self.cpus),
+                    "--pids-limit",
+                    str(self.pids_limit),
+                    "--mount",
+                    f"type=bind,source={self.repo_path},target=/workspace",
+                    "--workdir",
+                    "/workspace",
+                    self.image,
+                    "sleep",
+                    "infinity",
+                ],
+                capture_output=True,
+                text=True,
             )
 
-        self._started = True
+            if result.returncode != 0:
+                raise SandboxError(
+                    f"Failed to start sandbox: {result.stderr.strip()}"
+                )
+
+            self._started = True
+
+        except Exception:
+            try:
+                self._remove_container()
+            except Exception:
+                logger.exception(
+                    "Failed to remove sandbox container after start failure."
+                )
+
+            raise
 
     def stop(self) -> None:
         if not self._started:
             return
 
+        self._remove_container()
+        self._started = False
+
+    def _remove_container(self) -> None:
         result = subprocess.run(
             [
                 "docker",
                 "rm",
-                "--force",
+                "-f",
                 self.container_name,
             ],
             capture_output=True,
             text=True,
         )
 
-        self._started = False
-
         if result.returncode != 0:
+            stderr = result.stderr.strip()
+
+            if "No such container" in stderr:
+                return
+
             raise SandboxError(
-                f"Failed to remove sandbox: {result.stderr.strip()}"
+                f"Failed to remove sandbox: {stderr}"
             )
 
     def run_command(self, command: str) -> ToolOutput:

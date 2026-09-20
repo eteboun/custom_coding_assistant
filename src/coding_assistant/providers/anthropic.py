@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 
 from anthropic import Anthropic
@@ -9,26 +8,29 @@ from anthropic.types import (ToolParam, MessageParam,
 from .base import BaseLLM
 
 from ..models.schema import TokenUsage
-from ..config import Config
+from coding_assistant.assistant.config import Config
+from ..tools.schema import ToolSchema
 from ..tools.context import ToolCall
 
 class AnthropicLLM(BaseLLM[Anthropic]):
     def __init__(
             self,
             instructions: str,
-            repo_path: Path,
             config: Config
     ):
         super().__init__(
             instructions=instructions,
-            repo_path=repo_path,
             config=config,
             provider="anthropic",
             client=Anthropic()
         )
 
     @override
-    def generate(self) -> Message:
+    def generate(
+            self,
+            context: str,
+            tools: list[ToolSchema]
+            ) -> Message:
         kwargs = {}
 
         if self.reasoning is not None:
@@ -39,7 +41,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         messages: list[MessageParam] = [
                     {
                         "role": "user",
-                        "content": self.memory.format_context()
+                        "content": context
                     }
                 ]
 
@@ -47,7 +49,9 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                 model=self.model_data.id,
                 max_tokens=self.model_data.max_output_tokens,
                 system=self.instructions,
-                tools=self.tool_contract(),
+                tools=self.tool_schema_contract(
+                    tools=tools
+                ),
                 messages=messages,
                 thinking=ThinkingConfigAdaptiveParam(
                     type="adaptive"
@@ -95,7 +99,7 @@ class AnthropicLLM(BaseLLM[Anthropic]):
         ]
 
     @override
-    def tool_contract(self) -> list[ToolParam]:
+    def tool_schema_contract(self, tools: list[ToolSchema]) -> list[ToolParam]:
         return [
             ToolParam(
                 name=tool_data.name,
@@ -108,5 +112,5 @@ class AnthropicLLM(BaseLLM[Anthropic]):
                 },
                 strict=tool_data.strict
             )
-            for tool_data in self.tools.data_mapping.values()
+            for tool_data in tools
         ]

@@ -1,11 +1,16 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
+from logging import getLogger
 
 from .content import Tools
 from .context import (ToolCall, ToolOutput, ToolUsageError,
                       UpdateScope, Operation, Invalidation)
+from .schema import ToolSchema
 
 from ..utils import OutputProtocol
+
+logger = getLogger(__name__)
 
 @dataclass
 class ToolsAPIConfig:
@@ -27,21 +32,75 @@ class ToolsAPI:
         self.config = config
         self.repo_path = config.repo_path
 
-        self.tools = Tools(
+        self._tools = Tools(
             repo_path=config.repo_path,
             blocked_files=config.blocked_files,
             blocked_dirs=config.blocked_dirs
         )
 
+    def __enter__(self) -> Self:
+        self._tools.sandbox.start()
+        return self
+
+    def __exit__(
+            self,
+            exc_type,
+            exc_value,
+            traceback,
+    ) -> bool:
+        try:
+            self._tools.sandbox.stop()
+        except Exception:
+            if exc_value is None:
+                raise
+
+            logger.exception(
+                "Failed to stop sandbox during exception cleanup."
+            )
+
+        return False
+
+    def approval_message(
+            self,
+            call: ToolCall,
+    ) -> str | None:
+        tool = self._tools.data_mapping.get(call.name)
+
+        if tool is None or tool.metadata.approval is None:
+            return None
+
+        return tool.metadata.approval.message_template.format(
+            **call.args
+        )
+
+    @staticmethod
+    def denied_response(call: ToolCall) -> ToolsAPIResponse:
+        return ToolsAPIResponse(
+            output=ToolOutput(
+                output=OutputProtocol(
+                    status="error",
+                    message=(
+                        f"Tool '{call.name}' was not executed "
+                        "because the user denied approval."
+                    ),
+                )
+            ),
+            update_when={},
+            update_scope=None
+        )
+
+    def schemas(self) -> list[ToolSchema]:
+        return self._tools.data_mapping.values()
+
     def execute_call(self, call: ToolCall) -> ToolsAPIResponse:
         try:
-            if call.name not in self.tools.function_mapping:
+            if call.name not in self._tools.function_mapping:
                 raise ToolUsageError(
                     f"Tool {call.name} not found"
                 )
 
-            tool = self.tools.function_mapping[call.name]
-            tool_data = self.tools.data_mapping[call.name]
+            tool = self._tools.function_mapping[call.name]
+            tool_data = self._tools.data_mapping[call.name]
 
             if (
                     tool_data.metadata.mutative
@@ -73,6 +132,5 @@ class ToolsAPI:
         return ToolsAPIResponse(
             output=output,
             update_when=tool_data.metadata.update_when,
-            update_scope=tool_data.update_scope
+            update_scope=tool_data.metadata.update_scope
         )
-
