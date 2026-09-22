@@ -6,12 +6,11 @@ from .config import Config
 from .logger import Logger, LLMToolEventLog, LLMFinalCallLog
 from ..memory.memory import ActiveMemory, ShortMemory, LongMemory, ToolEvent
 
-from ..models.models import models_by_provider, models_data
+from ..models.models import models_by_provider
 from ..providers.llm import create_llm
 
-from ..models.operations import adjust_reasoning, is_valid_reasoning
 from ..tools.api import ToolsAPI, ToolsAPIConfig
-from ..utils import RecoverableError, CommandError, ConfigError, MaxIterationsError
+from ..utils import RecoverableError, CommandError, MaxIterationsError
 from .session import QuerySession
 
 logger = getLogger(__name__)
@@ -156,10 +155,9 @@ class Assistant:
             raise
 
     @staticmethod
-    def _command(accept_args: bool = False):
+    def _command():
         def wrapper(func):
             func.is_command = True
-            func.accept_args = accept_args
             return func
         return wrapper
 
@@ -172,8 +170,7 @@ class Assistant:
 
                 if command in self.mapping:
                     return self._run_command(
-                        command=command,
-                        args=args
+                        command=command
                     )
 
                 raise CommandError(
@@ -187,25 +184,13 @@ class Assistant:
         except RecoverableError as e:
             return str(e)
 
-    def _run_command(self, command: str, args: list[str]) -> str:
+    def _run_command(self, command: str) -> str:
         func = self.mapping[command]
-
-        if args and not func.accept_args:
-            raise CommandError(
-                f"Command {command} does not accept arguments."
-            )
-
-        output = func(self, args) if func.accept_args else func(self)
-        return output.strip()
+        return func(self).strip()
 
     @staticmethod
-    def _parse_command(query: str) -> tuple[str, list[str]]:
-        entries = query.split()
-
-        command = entries[0].removeprefix("/")
-        args = entries[1:]
-
-        return command, args
+    def _parse_command(query: str) -> str:
+        return query.removeprefix("/")
 
     @staticmethod
     def _get_command_functions():
@@ -244,58 +229,16 @@ class Assistant:
             f"Cache write tokens: {usage.cache_write_tokens}"
         )
 
-    @_command(accept_args=True)
-    def model(self, args: list[str]) -> str:
+    @_command()
+    def model(self) -> str:
         """
         Shows current model if no model name is provided.
         Changes model if model name is provided.
         """
 
-        if len(args) == 0:
-            return (
-                f"Current model: {self.llm.model_data.id}"
-            )
-
-        if len(args) > 1:
-            raise CommandError(
-                "Invalid arguments."
-            )
-
-        model = args[0]
-        self._change_model(model=model)
-
         return (
-            f"Successfully changed the model to {model}.\n"
-            f"Reasoning: {self.config.reasoning}"
+            f"Current model: {self.llm.model_data.id}"
         )
-
-    def _change_model(self, model: str) -> None:
-        model_data = models_data.models.get(model)
-
-        if model_data is None:
-            raise ConfigError(
-                f"{model} is not a valid model."
-            )
-
-        reasoning = adjust_reasoning(
-            model_data=model_data,
-            reasoning=self.config.reasoning,
-        )
-
-        new_config = self.config.model_copy(
-            update={
-                "model_name": model,
-                "reasoning": reasoning,
-            }
-        )
-
-        new_llm = create_llm(
-            instructions=self.instructions,
-            config=new_config
-        )
-
-        self.config = new_config
-        self.llm = new_llm
 
     @_command()
     def models(self) -> str:
@@ -314,38 +257,17 @@ class Assistant:
 
         return '\n\n'.join(text)
 
-    @_command(accept_args=True)
-    def reasoning_level(self, args: list[str]) -> str:
+    @_command()
+    def reasoning_level(self) -> str:
         """
         Shows current reasoning level if no reasoning level is provided.
         Changes reasoning level if reasoning level is provided.
         """
 
-        if len(args) == 0:
-            return (
-                f"Current config reasoning: {self.config.reasoning}\n"
-                f"Current effective reasoning: {self.llm.reasoning}"
-            )
-
-        if len(args) > 1:
-            raise CommandError(
-                "Invalid arguments."
-            )
-
-        reasoning = None if args[0] == "null" else args[0]
-
-        if not is_valid_reasoning(
-            reasoning=reasoning,
-            model_data=self.llm.model_data
-        ):
-            raise ConfigError(
-                f"Reasoning level {reasoning} is not valid."
-            )
-
-        self.llm.update_reasoning(reasoning=reasoning)
-        self.config.reasoning = reasoning
-
-        return "Successfully changed the reasoning level."
+        return (
+            f"Current config reasoning: {self.config.reasoning}\n"
+            f"Current effective reasoning: {self.llm.reasoning}"
+        )
 
     @_command()
     def reasoning_levels(self) -> str:

@@ -25,6 +25,3 @@ class LogError(RecoverableError):
 
 class ToolEnvironmentError(RecoverableError):
     pass
-
-class ConfigError(RecoverableError):
-    pass

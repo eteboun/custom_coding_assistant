@@ -118,6 +118,7 @@ class ToolCall(LogElement, ContextElement):
     name: str
     args: dict
 
+    id: str | None = None
     mutation_summary: str | None = None
 
     def __post_init__(self):

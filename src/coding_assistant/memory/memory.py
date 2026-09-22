@@ -282,7 +282,7 @@ class ActiveMemory(LogElement):
                 updated_events.append(saved_event)
 
             elif invalidation == Invalidation.REFRESH:
-                saved_event.output = self.tools_api.resolve_call(
+                saved_event.output = self.tools_api.execute_call(
                     call=saved_event.call
                 ).output
 

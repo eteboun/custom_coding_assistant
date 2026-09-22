@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from ..models.operations import resolve_reasoning, resolve_model
-from ..models.schema import ProviderId, TokenUsage, ReasoningLevel
+from ..models.schema import ProviderId, TokenUsage
 
 from coding_assistant.assistant.config import Config
 
@@ -29,14 +29,6 @@ class BaseLLM[ClientT](ABC):
             model_data=self.model_data,
             reasoning=config.reasoning
         )
-
-    def update_reasoning(self, reasoning: ReasoningLevel | None) -> None:
-        reasoning = resolve_reasoning(
-            model_data=self.model_data,
-            reasoning=reasoning
-        )
-
-        self.reasoning = reasoning
 
     @abstractmethod
     def usage(self, response) -> TokenUsage:

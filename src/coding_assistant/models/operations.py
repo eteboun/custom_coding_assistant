@@ -48,34 +48,3 @@ def resolve_reasoning(
         )
 
     return None
-
-def adjust_reasoning(
-    reasoning: ReasoningLevel | None,
-    model_data: ModelData,
-) -> ReasoningLevel | None:
-    levels = model_data.reasoning.levels
-
-    if not levels:
-        return None
-
-    if reasoning in levels:
-        return reasoning
-
-    if model_data.reasoning.default is not None:
-        return model_data.reasoning.default
-
-    return levels[0]
-
-def is_valid_reasoning(
-    reasoning: str | None,
-    model_data: ModelData
-) -> bool:
-    levels = model_data.reasoning.levels
-
-    if not levels:
-        return reasoning is None
-
-    if reasoning is None:
-        return model_data.reasoning.default is not None
-
-    return reasoning in levels
