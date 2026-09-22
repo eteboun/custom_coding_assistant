@@ -13,6 +13,10 @@ from .schema import ToolSchema
 
 logger = getLogger(__name__)
 
+from collections.abc import Callable
+
+ApprovalHandler = Callable[[str], bool]
+
 @dataclass
 class ToolsAPIConfig:
     repo_path: Path
@@ -70,28 +74,12 @@ class ToolsAPI:
 
         return False
 
-    def approval_message(
-            self,
-            call: ToolCall,
-    ) -> str | None:
-        tool = self._tools.data_mapping.get(call.name)
-
-        if tool is None or tool.metadata.approval is None:
-            return None
-
-        return tool.metadata.approval.template.format(
-            **call.args
-        )
-
     @staticmethod
-    def denied_response(call: ToolCall) -> ToolsAPIResponse:
+    def _denied_response(reason: str) -> ToolsAPIResponse:
         return ToolsAPIResponse(
             output=ToolOutput(
                 status="denied",
-                message=(
-                    f"Tool '{call.name}' was not executed "
-                    "because the user denied approval."
-                )
+                message=reason
             ),
             update_when={},
             update_scope=None
@@ -102,29 +90,19 @@ class ToolsAPI:
             self._tools.data_mapping.values()
         )
 
-    def execute_call(self, call: ToolCall) -> ToolsAPIResponse:
+    def execute_call(
+            self,
+            call: ToolCall,
+            approval_handler: ApprovalHandler | None = None,
+    ) -> ToolsAPIResponse:
         try:
             if call.name not in self._tools.function_mapping:
-                raise ToolUsageError(
-                    f"Tool {call.name} not found"
-                )
+                raise ToolUsageError(f"Tool {call.name} not found")
 
             tool = self._tools.function_mapping[call.name]
             tool_data = self._tools.data_mapping[call.name]
 
-            if (
-                    tool_data.metadata.mutative
-                    and (
-                        call.mutation_summary is None
-                        or not call.mutation_summary.strip()
-                )
-            ):
-                raise ToolUsageError(
-                    f"Tool {call.name} requires mutation summary"
-                )
-
             validation_args = dict(call.args)
-
             if call.mutation_summary is not None:
                 validation_args["change_summary"] = call.mutation_summary
 
@@ -144,22 +122,43 @@ class ToolsAPI:
                     f"Invalid arguments for tool '{call.name}': {message}"
                 ) from error
 
-            output = tool(**call.args)
+            if (
+                    tool_data.metadata.mutative
+                    and not call.mutation_summary.strip()
+            ):
+                raise ToolUsageError(
+                    f"Tool {call.name} requires a nonempty mutation summary"
+                )
 
-        except ToolUsageError as e:
-            output = ToolOutput(
-                status="error",
-                message=str(e),
-                learning_metadata=e.learning
-            )
+        except ToolUsageError as error:
             return ToolsAPIResponse(
-                output=output,
+                output=ToolOutput(
+                    status="error",
+                    message=str(error),
+                    learning_metadata=error.learning
+                ),
                 update_when={},
                 update_scope=None
             )
 
+        approval = tool_data.metadata.approval
+        if approval is not None:
+            message = approval.template.format(**call.args)
+
+            if approval_handler is None:
+                raise RuntimeError(
+                    f"Approval handler required for tool '{call.name}'"
+                )
+
+            if not approval_handler(message):
+                return self._denied_response(
+                    reason="the user denied approval"
+                )
+
+        output = tool(**call.args)
+
         return ToolsAPIResponse(
             output=output,
             update_when=tool_data.metadata.update_when,
-            update_scope=tool_data.metadata.update_scope
+            update_scope=tool_data.metadata.update_scope,
         )

@@ -105,11 +105,10 @@ class Assistant:
                 )
 
             for call in tool_calls:
-                message = api.approval_message(call=call)
-                if message is not None and not self.get_approval(message=message):
-                    tool_response = api.denied_response(call=call)
-                else:
-                    tool_response = api.execute_call(call=call)
+                tool_response = api.execute_call(
+                    call=call,
+                    approval_handler=self.get_approval
+                )
 
                 if tool_response.is_fail():
                     event = ToolEvent(
