@@ -44,6 +44,8 @@ class QuerySession:
                 output=self.output,
                 loop_completed=self.loop_completed,
             )
+            self.query_log.session_final_memory = self.memory_log()
+
         except Exception as error:
             cleanup_errors.append(error)
 
@@ -53,6 +55,15 @@ class QuerySession:
             )
         except Exception as error:
             cleanup_errors.append(error)
+
+        if cleanup_errors or exc_value is not None:
+            errors = cleanup_errors + (
+                [exc_value]
+                if exc_value is not None
+                else []
+            )
+
+            self.query_log.errors = errors
 
         if cleanup_errors:
             if exc_value is None:

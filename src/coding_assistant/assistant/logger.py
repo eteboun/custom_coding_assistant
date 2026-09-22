@@ -46,6 +46,9 @@ class LLMFinalCallLog(LLMCallLog):
 @dataclass
 class QueryLog(LogElement):
     query: str
+    errors: list[Exception] = field(
+        default_factory=list
+    )
     session_final_memory: dict[str, Any] = field(
         init=False,
         default_factory=dict,
@@ -74,7 +77,11 @@ class QueryLog(LogElement):
                 llm_call.to_log()
                 for llm_call in self.llm_calls
             ],
-            "total_usage": self.total_usage().to_log()
+            "total_usage": self.total_usage().to_log(),
+            "errors": [
+                str(e)
+                for e in self.errors
+            ],
         }
 
 @dataclass

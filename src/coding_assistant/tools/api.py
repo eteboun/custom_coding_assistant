@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Self
 from logging import getLogger
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+
 from .content import Tools
 from .context import (ToolCall, ToolOutput, ToolUsageError,
                       UpdateScope, Operation, Invalidation)
 from .schema import ToolSchema
-
-from ..utils import OutputProtocol
 
 logger = getLogger(__name__)
 
@@ -37,6 +38,15 @@ class ToolsAPI:
             blocked_files=config.blocked_files,
             blocked_dirs=config.blocked_dirs
         )
+        self._validators = {
+            name: Draft202012Validator({
+                "type": schema.parameters.type,
+                "properties": schema.parameters.properties,
+                "required": schema.parameters.required,
+                "additionalProperties": schema.parameters.additional_properties,
+            })
+            for name, schema in self._tools.data_mapping.items()
+        }
 
     def __enter__(self) -> Self:
         self._tools.sandbox.start()
@@ -77,12 +87,10 @@ class ToolsAPI:
     def denied_response(call: ToolCall) -> ToolsAPIResponse:
         return ToolsAPIResponse(
             output=ToolOutput(
-                output=OutputProtocol(
-                    status="error",
-                    message=(
-                        f"Tool '{call.name}' was not executed "
-                        "because the user denied approval."
-                    ),
+                status="denied",
+                message=(
+                    f"Tool '{call.name}' was not executed "
+                    "because the user denied approval."
                 )
             ),
             update_when={},
@@ -90,7 +98,9 @@ class ToolsAPI:
         )
 
     def schemas(self) -> list[ToolSchema]:
-        return self._tools.data_mapping.values()
+        return list(
+            self._tools.data_mapping.values()
+        )
 
     def execute_call(self, call: ToolCall) -> ToolsAPIResponse:
         try:
@@ -113,14 +123,33 @@ class ToolsAPI:
                     f"Tool {call.name} requires mutation summary"
                 )
 
+            validation_args = dict(call.args)
+
+            if call.mutation_summary is not None:
+                validation_args["change_summary"] = call.mutation_summary
+
+            try:
+                self._validators[call.name].validate(validation_args)
+
+            except ValidationError as error:
+                location = ".".join(
+                    str(part) for part in error.absolute_path
+                )
+
+                message = error.message
+                if location:
+                    message = f"{location}: {message}"
+
+                raise ToolUsageError(
+                    f"Invalid arguments for tool '{call.name}': {message}"
+                ) from error
+
             output = tool(**call.args)
 
         except ToolUsageError as e:
             output = ToolOutput(
-                output=OutputProtocol(
-                    status="error",
-                    message=str(e)
-                ),
+                status="error",
+                message=str(e),
                 learning_metadata=e.learning
             )
             return ToolsAPIResponse(

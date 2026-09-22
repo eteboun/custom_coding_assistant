@@ -1,7 +1,6 @@
 {
   "currency": "USD",
   "pricing_unit": "per_1m_tokens",
-
   "models": {
     "gpt-6-astra": {
       "id": "gpt-6-astra",
@@ -9,7 +8,13 @@
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["low", "medium", "high", "xhigh", "max"],
+        "levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
         "default": null
       },
       "pricing": {
@@ -18,14 +23,20 @@
         "output": 50.0
       }
     },
-
     "gpt-5.6-sol": {
       "id": "gpt-5.6-sol",
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
         "default": "medium"
       },
       "pricing": {
@@ -39,14 +50,20 @@
         "above_threshold_output_multiplier": 1.5
       }
     },
-
     "gpt-5.6-terra": {
       "id": "gpt-5.6-terra",
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
         "default": "medium"
       },
       "pricing": {
@@ -60,14 +77,20 @@
         "above_threshold_output_multiplier": 1.5
       }
     },
-
     "gpt-5.6-luna": {
       "id": "gpt-5.6-luna",
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh", "max"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
         "default": "medium"
       },
       "pricing": {
@@ -76,14 +99,19 @@
         "output": 1.2
       }
     },
-
     "gpt-5.5": {
       "id": "gpt-5.5",
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "default": "medium"
       },
       "pricing": {
@@ -97,14 +125,19 @@
         "above_threshold_output_multiplier": 1.5
       }
     },
-
     "gpt-5.4": {
       "id": "gpt-5.4",
       "provider": "openai",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "default": "none"
       },
       "pricing": {
@@ -118,14 +151,19 @@
         "above_threshold_output_multiplier": 1.5
       }
     },
-
     "gpt-5.4-mini": {
       "id": "gpt-5.4-mini",
       "provider": "openai",
       "context_window": 400000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "default": "none"
       },
       "pricing": {
@@ -134,225 +172,25 @@
         "output": 4.5
       }
     },
-
     "gpt-5.4-nano": {
       "id": "gpt-5.4-nano",
       "provider": "openai",
       "context_window": 400000,
       "max_output_tokens": 128000,
       "reasoning": {
-        "levels": ["none", "low", "medium", "high", "xhigh"],
+        "levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "default": "none"
       },
       "pricing": {
         "input": 0.2,
         "cached_input": 0.02,
         "output": 1.25
-      }
-    },
-
-    "claude-fable-5-1": {
-      "id": "claude-fable-5-1",
-      "provider": "anthropic",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "reasoning": {
-        "levels": ["low", "medium", "high", "xhigh", "max"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 10.0,
-        "cached_input": 0.25,
-        "cache_write_5m": 12.5,
-        "cache_write_1h": 20.0,
-        "output": 50.0
-      }
-    },
-
-    "claude-opus-5": {
-      "id": "claude-opus-5",
-      "provider": "anthropic",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "reasoning": {
-        "levels": ["low", "medium", "high", "xhigh", "max"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 5.0,
-        "cached_input": 0.5,
-        "cache_write_5m": 6.25,
-        "cache_write_1h": 10.0,
-        "output": 25.0
-      }
-    },
-
-    "claude-sonnet-5": {
-      "id": "claude-sonnet-5",
-      "provider": "anthropic",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "reasoning": {
-        "levels": ["low", "medium", "high", "xhigh", "max"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 2.0,
-        "cached_input": 0.2,
-        "cache_write_5m": 2.5,
-        "cache_write_1h": 4.0,
-        "output": 10.0
-      }
-    },
-
-    "claude-sonnet-4-6": {
-      "id": "claude-sonnet-4-6",
-      "provider": "anthropic",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "reasoning": {
-        "levels": ["low", "medium", "high", "max"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 3.0,
-        "cached_input": 0.3,
-        "cache_write_5m": 3.75,
-        "cache_write_1h": 6.0,
-        "output": 15.0
-      }
-    },
-
-    "gemini-3.8-flash": {
-      "id": "gemini-3.8-flash",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["low", "medium", "high"],
-        "default": "medium"
-      },
-      "pricing": {
-        "input": 0.75,
-        "cached_input": 0.075,
-        "output": 3.75
-      }
-    },
-
-    "gemini-3.7-flash": {
-      "id": "gemini-3.7-flash",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["low", "medium", "high"],
-        "default": "medium"
-      },
-      "pricing": {
-        "input": 0.75,
-        "cached_input": 0.075,
-        "output": 3.75
-      }
-    },
-
-    "gemini-3.6-flash": {
-      "id": "gemini-3.6-flash",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["minimal", "low", "medium", "high"],
-        "default": "medium"
-      },
-      "pricing": {
-        "input": 0.75,
-        "cached_input": 0.075,
-        "output": 3.75
-      }
-    },
-
-    "gemini-3.5-flash": {
-      "id": "gemini-3.5-flash",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["minimal", "low", "medium", "high"],
-        "default": "medium"
-      },
-      "pricing": {
-        "input": 1.5,
-        "cached_input": 0.15,
-        "output": 9.0
-      }
-    },
-
-    "gemini-3.5-flash-lite": {
-      "id": "gemini-3.5-flash-lite",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["minimal", "low", "medium", "high"],
-        "default": "minimal"
-      },
-      "pricing": {
-        "input": 0.3,
-        "cached_input": 0.03,
-        "output": 2.5
-      }
-    },
-
-    "gemini-3.1-pro-preview": {
-      "id": "gemini-3.1-pro-preview",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["low", "medium", "high"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 2.0,
-        "output": 12.0
-      },
-      "pricing_rules": {
-        "long_context_threshold": 200000,
-        "above_threshold": {
-          "input": 4.0,
-          "output": 18.0
-        }
-      }
-    },
-
-    "gemini-3-flash-preview": {
-      "id": "gemini-3-flash-preview",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["minimal", "low", "medium", "high"],
-        "default": "high"
-      },
-      "pricing": {
-        "input": 0.5,
-        "output": 3.0
-      }
-    },
-
-    "gemini-3.1-flash-lite": {
-      "id": "gemini-3.1-flash-lite",
-      "provider": "google",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "reasoning": {
-        "levels": ["minimal", "low", "medium", "high"],
-        "default": "minimal"
-      },
-      "pricing": {
-        "input": 0.25,
-        "cached_input": 0.025,
-        "output": 1.5
       }
     }
   }

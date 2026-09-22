@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from .apply_patch import _parse_patch, _apply_update, _parse_added_file
 from .context import ToolOutput, Mutation, Operation, ToolUsageError, LearningMetadata
-from ..utils import OutputProtocol, ToolEnvironmentError
+from ..utils import ToolEnvironmentError
 
 
 class PatchRollbackError(Exception):
@@ -24,7 +24,7 @@ class Workspace:
                  blocked_dirs: list[str]
                  ) -> None:
 
-        self.repo_path = repo_path
+        self.repo_path = repo_path.resolve()
         self.blocked_files = blocked_files
         self.blocked_dirs = blocked_dirs
 
@@ -67,7 +67,7 @@ class Workspace:
     def _resolve_path(
             self,
             path: str,
-    ) -> OutputProtocol:
+    ) -> Path:
         full_path = (self.repo_path / path).resolve()
 
         if not full_path.is_relative_to(self.repo_path):
@@ -93,73 +93,48 @@ class Workspace:
                 "Path is not accessible"
             )
 
-        return OutputProtocol(
-            status="success",
-            content=full_path
-        )
+        return full_path
 
     def _resolve_dir(
             self,
             path: str
-    ) -> OutputProtocol:
+    ) -> Path:
 
         resolved_path = self._resolve_path(
             path=path
         )
-        full_path = resolved_path.content
 
-        if not full_path.exists():
+        if not resolved_path.exists():
             raise ToolUsageError(
                 f"Directory {path} does not exist"
             )
 
-        if not full_path.is_dir():
+        if not resolved_path.is_dir():
             raise ToolUsageError(
                 f"{path} is not a directory"
             )
 
-        return OutputProtocol(
-            status="success",
-            content=full_path,
-        )
+        return resolved_path
 
     def _resolve_file(
             self,
             path: str
-    ) -> OutputProtocol:
+    ) -> Path:
         resolved_path = self._resolve_path(
             path=path
         )
-        full_path = resolved_path.content
 
-        if not full_path.exists():
+        if not resolved_path.exists():
             raise ToolUsageError(
                 f"File {path} does not exist"
             )
 
-        if not full_path.is_file():
+        if not resolved_path.is_file():
             raise ToolUsageError(
                 f"{path} is not a file"
             )
 
-        return OutputProtocol(
-            status="success",
-            content=full_path,
-        )
-
-    def _is_allowed_path(
-            self,
-            path: Path
-    ) -> bool:
-        try:
-            self._resolve_path(
-                path=path.as_posix()
-            )
-
-        except ToolUsageError:
-            return False
-
-        return True
+        return resolved_path
 
     def search_files(
             self,
@@ -193,27 +168,26 @@ class Workspace:
             cwd=self.repo_path
         )
 
-        files: list[str] = []
+        files: set[str] = set()
 
         for raw_path in result.stdout.splitlines():
-            path = Path(raw_path)
-
-            if not self._is_allowed_path(path):
+            try:
+                full_path = self._resolve_path(raw_path)
+            except ToolUsageError:
                 continue
 
-            files.append(path.as_posix())
+            relative = full_path.relative_to(self.repo_path).as_posix()
+            files.add(relative)
 
             if len(files) >= max_results:
                 break
 
-        files.sort()
+        sorted_files = sorted(files)
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content=files,
-            ),
-            files=tuple(files)
+            status="success",
+            content=sorted_files,
+            files=tuple(sorted_files)
         )
 
     def search_text(
@@ -224,26 +198,37 @@ class Workspace:
             max_output_lines: int = 100
     ) -> ToolOutput:
 
+        if context_lines < 0:
+            raise ToolUsageError(
+                "context_lines must be >= 0.",
+            )
+
+        if max_output_lines < 1:
+            raise ToolUsageError(
+                "max_output_lines must be >= 1.",
+            )
+
         cmd = [
             "rg",
             "--json",
             "-C",
-            str(context_lines),
+            str(context_lines)
         ]
 
         if not regex:
             cmd.append("--fixed-strings")
-
-        cmd.extend([
-            text,
-            self.repo_path.as_posix()
-        ])
 
         for file in self.blocked_files:
             cmd.extend(["-g", f"!{file}"])
 
         for directory in self.blocked_dirs:
             cmd.extend(["-g", f"!{directory}/**"])
+
+        cmd.extend([
+            "--",
+            text,
+            self.repo_path.as_posix()
+        ])
 
         result = self._run_ripgrep(
             cmd=cmd,
@@ -255,44 +240,52 @@ class Workspace:
             findings: list[str] = []
 
             lines = 0
+            full_paths: dict[str, Path] = {}
             for line in result.stdout.splitlines():
                 event = json.loads(line)
 
                 if event["type"] not in ("match", "context"):
                     continue
 
-                path = Path(event["data"]["path"]["text"])
+                path = event["data"]["path"]["text"]
                 line_number = event["data"]["line_number"]
                 line_text = event["data"]["lines"]["text"].rstrip("\n")
 
-                if path.is_absolute():
-                    path = path.relative_to(self.repo_path)
+                try:
+                    full_path = full_paths.get(path)
+                    if full_path is None:
+                        full_path = self._resolve_file(path=path)
 
-                path_str = path.as_posix()
+                        full_paths[path] = full_path
 
-                files.add(path_str)
+                except ToolUsageError:
+                    continue
+
+                relative = full_path.relative_to(
+                    self.repo_path
+                ).as_posix()
+
+                files.add(relative)
                 findings.append(
-                    f"{path_str}:{line_number}:{line_text}"
+                    f"{relative}:{line_number}:{line_text}"
                 )
 
                 lines += 1
                 if lines >= max_output_lines:
                     break
 
+            sorted_files = sorted(files)
+
             return ToolOutput(
-                output=OutputProtocol(
-                    status="success",
-                    content="\n".join(findings)
-                ),
-                files=tuple(sorted(files))
+                status="success",
+                content="\n".join(findings),
+                files=tuple(sorted_files)
             )
 
         if result.returncode == 1:
             return ToolOutput(
-                output=OutputProtocol(
-                    status="success",
-                    content="No match found"
-                )
+                status="success",
+                content="No match found"
             )
 
         raise ToolEnvironmentError(
@@ -316,75 +309,83 @@ class Workspace:
                 return
 
             for entry in entries:
-                relative = entry.relative_to(self.repo_path)
+                try:
+                    full_path = self._resolve_path(
+                        path=entry.as_posix()
+                    )
 
-                if entry.is_dir():
-                    if entry.name in self.blocked_dirs:
-                        continue
-                elif entry.name in self.blocked_files:
+                except ToolUsageError:
                     continue
 
-                files.append(relative.as_posix())
+                relative = full_path.relative_to(
+                    self.repo_path
+                ).as_posix()
+
+                files.append(relative)
 
                 indent = "    " * depth
 
                 if entry.is_dir():
-                    lines.append(f"{indent}{relative.name}/")
+                    lines.append(f"{indent}{entry.name}/")
                     walk(entry, depth + 1)
                 else:
-                    lines.append(f"{indent}{relative.name}")
+                    lines.append(f"{indent}{entry.name}")
 
         walk(self.repo_path, 0)
 
         files.sort()
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content="\n".join(lines),
-            ),
+            status="success",
+            content="\n".join(lines),
             files=tuple(files)
         )
 
     def list_directory(self, path: str) -> ToolOutput:
-        resolved_dir = self._resolve_dir(path=path)
+        full_dir_path = self._resolve_dir(path=path)
 
-        entries = sorted(
-            e.name
-            for e in resolved_dir.content.iterdir()
-            if self._is_allowed_path(e)
-        )
+        entries: list[str] = []
+        for path in full_dir_path.iterdir():
+            try:
+                full_path = self._resolve_path(
+                    path=path.as_posix()
+                )
+            except ToolUsageError:
+                continue
+
+            relative = full_path.relative_to(
+                self.repo_path
+            ).as_posix()
+
+            entries.append(relative)
+
+        entries.sort()
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content=entries
-            ),
+            status="success",
+            content=entries,
             files=tuple(entries)
         )
 
-    def delete_dir(self, path: str) -> ToolOutput:
-        resolved_dir = self._resolve_dir(path=path)
-        full_path = resolved_dir.content
-
-        relative_path = full_path.relative_to(
-            self.repo_path
-        ).as_posix()
+    def delete_directory(self, path: str) -> ToolOutput:
+        full_path = self._resolve_dir(path=path)
 
         try:
             full_path.rmdir()
         except OSError as e:
             raise ToolUsageError(str(e)) from e
 
+        relative = full_path.relative_to(
+            self.repo_path
+        ).as_posix()
+
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content=relative_path
-            ),
-            files=(relative_path,),
+            status="success",
+            content=relative,
+            files=(relative,),
             mutations=(
                 Mutation(
-                    path=relative_path,
+                    path=relative,
                     type=Operation.DELETE
                 ),
             )
@@ -396,8 +397,17 @@ class Workspace:
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> ToolOutput:
-        resolved_file = self._resolve_file(path=path)
-        full_path = resolved_file.content
+        if start_line is not None and start_line < 1:
+            raise ToolUsageError(
+                "start_line must be positive when provided."
+            )
+
+        if end_line is not None and end_line < 1:
+            raise ToolUsageError(
+                "end_line must be positive when provided."
+            )
+
+        full_path = self._resolve_file(path=path)
 
         relative = full_path.relative_to(
             self.repo_path
@@ -406,12 +416,28 @@ class Workspace:
         with open(full_path, encoding="utf-8") as f:
             lines = f.readlines()
 
-        start = start_line - 1 if start_line is not None else 0
-        end = end_line if end_line is not None else len(lines)
+        file_length = len(lines)
+        if file_length == 0:
+            raise ToolUsageError(f"File {relative} is empty.")
+
+        start = start_line if start_line is not None else 1
+        end = end_line if end_line is not None else file_length
+
+        if start > file_length:
+            raise ToolUsageError(
+                f"start_line {start} exceeds file length {file_length}."
+            )
+
+        if end < start:
+            raise ToolUsageError(
+                "end_line must be greater than or equal to start_line."
+            )
+
+        end = min(end, file_length)
 
         numbered_line_group = zip(
-            range(start + 1, end + 1),
-            lines[start:end]
+            range(start, end + 1),
+            lines[start - 1:end]
         )
 
         numbered_lines = []
@@ -421,10 +447,8 @@ class Workspace:
             )
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content="".join(numbered_lines)
-            ),
+            status="success",
+            content="".join(numbered_lines),
             files=(relative,)
         )
 
@@ -444,8 +468,7 @@ class Workspace:
 
         for file_patch in file_patches:
             if file_patch.operation == "update":
-                resolved = self._resolve_file(file_patch.path)
-                full_path = resolved.content
+                full_path = self._resolve_file(file_patch.path)
 
                 with open(full_path, "r", encoding="utf-8", newline="") as f:
                     initial_content = f.read()
@@ -465,8 +488,7 @@ class Workspace:
                 original_paths.add(full_path)
 
             elif file_patch.operation == "delete":
-                resolved = self._resolve_file(file_patch.path)
-                full_path = resolved.content
+                full_path = self._resolve_file(file_patch.path)
 
                 if file_patch.lines:
                     raise ToolUsageError(
@@ -478,8 +500,7 @@ class Workspace:
                 original_paths.add(full_path)
 
             elif file_patch.operation == "add":
-                resolved = self._resolve_path(file_patch.path)
-                full_path = resolved.content
+                full_path = self._resolve_path(file_patch.path)
 
                 if full_path.exists():
                     raise ToolUsageError(
@@ -663,10 +684,8 @@ class Workspace:
             )
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content=message
-            ),
+            status="success",
+            content=message,
             files=files,
             mutations=mutations
         )

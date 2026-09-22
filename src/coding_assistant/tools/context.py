@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any, Literal, get_args
 
-from ..utils import OutputProtocol, LogElement, ContextElement
+from ..utils import LogElement, ContextElement
 
 @dataclass(frozen=True)
 class LearningMetadata(LogElement):
@@ -53,13 +54,28 @@ class Mutation(LogElement):
             "type": self.type.value
         }
 
+Status = Literal[
+    "success", "error", "denied"
+]
 
 @dataclass(frozen=True)
 class ToolOutput(LogElement, ContextElement):
-    output: OutputProtocol
+    status: Status
+    content: Any = None
+    message: str | None = None
     files: tuple[str, ...] = ()
     mutations: tuple[Mutation, ...] = ()
     learning_metadata: LearningMetadata | None = None
+
+    def __post_init__(self):
+        if self.status not in get_args(Status):
+            raise ValueError(f"Invalid status: {self.status}")
+
+        if self.status == "success" and self.content is None:
+            raise ValueError("Successful output must contain content")
+
+        if self.status in ("error", "denied") and self.message is None:
+            raise ValueError("Unsuccessful output must contain a message")
 
     def to_log(self) -> dict:
         return {
@@ -73,14 +89,28 @@ class ToolOutput(LogElement, ContextElement):
                 if self.learning_metadata is not None
                 else None
             ),
-            "output": self.output.to_log()
+            "status": self.status,
+            "content": (
+                self.content.to_log()
+                if isinstance(self.content, LogElement)
+                else self.content
+            ),
+            "message": self.message
         }
 
     def to_context(self) -> dict:
-        return self.output.to_log()
+        return {
+            "status": self.status,
+            "content": (
+                self.content.to_log()
+                if isinstance(self.content, LogElement)
+                else self.content
+            ),
+            "message": self.message
+        }
 
     def is_fail(self) -> bool:
-        return self.output.is_fail()
+        return self.status == "error"
 
 
 @dataclass

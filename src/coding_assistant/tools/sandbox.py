@@ -7,7 +7,6 @@ from logging import getLogger
 from pathlib import Path
 
 from .context import ToolOutput, ToolUsageError
-from ..utils import OutputProtocol
 
 logger = getLogger(__name__)
 
@@ -219,8 +218,6 @@ class Sandbox:
             message += f"\nStderr:\n{stderr}"
 
         return ToolOutput(
-            output=OutputProtocol(
-                status="success",
-                content=message
-            )
+            status="success",
+            content=message
         )

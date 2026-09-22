@@ -6,9 +6,7 @@ from typing import Literal, Self
 from ..utils import LogElement
 
 ProviderId = Literal[
-    "openai",
-    "anthropic",
-    "google",
+    "openai"
 ]
 
 ReasoningLevel = Literal[

@@ -1,4 +1,5 @@
 from pathlib import Path
+from logging import getLogger
 import inspect
 
 from .config import Config
@@ -12,6 +13,8 @@ from ..models.operations import adjust_reasoning, is_valid_reasoning
 from ..tools.api import ToolsAPI, ToolsAPIConfig
 from ..utils import RecoverableError, CommandError, ConfigError, MaxIterationsError
 from .session import QuerySession
+
+logger = getLogger(__name__)
 
 class Assistant:
 
@@ -57,86 +60,101 @@ class Assistant:
         approval = input(f"{message} [y/N]: ")
         return approval.strip().lower() == "y"
 
-    def _run_query(
+    def _run_agent_loop(
             self,
-            query: str
+            session: QuerySession,
+            api: ToolsAPI
     ) -> str:
-        with QuerySession(
-                query=query,
-                memory=self.memory,
-                query_logger=self.logger
-        ) as session:
-            with self.tools_api as api:
 
-                tool_schemas = api.schemas()
-                initial_memory = session.memory_log()
+        tool_schemas = api.schemas()
+        initial_memory = session.memory_log()
 
-                response = self.llm.generate(
-                    context=session.context(),
-                    tools=tool_schemas,
+        response = self.llm.generate(
+            context=session.context(),
+            tools=tool_schemas,
+        )
+
+        for i in range(self.config.max_iters):
+            usage = self.llm.usage(response=response)
+            tool_calls = self.llm.tool_call_contract(response)
+
+            if not tool_calls:
+                output_text = self.llm.output_text(response)
+
+                session.add_llm_call(
+                    LLMFinalCallLog(
+                        initial_memory=initial_memory,
+                        usage=usage,
+                        response=output_text,
+                    )
                 )
 
-                for i in range(self.config.max_iters):
-                    usage = self.llm.usage(response=response)
-                    tool_calls = self.llm.tool_call_contract(response)
+                session.complete_loop(output_text)
+                return output_text
 
-                    if not tool_calls:
-                        output_text = self.llm.output_text(response)
+            call_log = LLMToolEventLog(
+                usage=usage,
+                initial_memory=initial_memory,
+            )
+            session.add_llm_call(call_log)
 
-                        session.add_llm_call(
-                            LLMFinalCallLog(
-                                initial_memory=initial_memory,
-                                usage=usage,
-                                response=output_text,
-                            )
-                        )
+            if i == self.config.max_iters - 1:
+                raise MaxIterationsError(
+                    f"Maximum iteration limit reached: "
+                    f"{self.config.max_iters}"
+                )
 
-                        session.complete_loop(output_text)
-                        return output_text
+            for call in tool_calls:
+                message = api.approval_message(call=call)
+                if message is not None and not self.get_approval(message=message):
+                    tool_response = api.denied_response(call=call)
+                else:
+                    tool_response = api.execute_call(call=call)
 
-                    call_log = LLMToolEventLog(
-                        usage=usage,
-                        initial_memory=initial_memory,
+                if tool_response.is_fail():
+                    event = ToolEvent(
+                        call=call,
+                        output=tool_response.output,
                     )
-                    session.add_llm_call(call_log)
-
-                    if i == self.config.max_iters - 1:
-                        raise MaxIterationsError(
-                            f"Maximum iteration limit reached: "
-                            f"{self.config.max_iters}"
-                        )
-
-                    for call in tool_calls:
-                        message = api.approval_message(call=call)
-                        if message is not None and not self.get_approval(message=message):
-                            tool_response = api.denied_response(call=call)
-                        else:
-                            tool_response = api.execute_call(call=call)
-
-                        if tool_response.is_fail():
-                            event = ToolEvent(
-                                call=call,
-                                output=tool_response.output,
-                            )
-                        else:
-                            event = ToolEvent(
-                                call=call,
-                                output=tool_response.output,
-                                update_when=tool_response.update_when,
-                                update_scope=tool_response.update_scope,
-                            )
-
-                        call_log.events.append(event.to_log())
-                        session.add_event(event)
-
-                    final_memory = session.memory_log()
-                    call_log.final_memory = final_memory
-                    initial_memory = final_memory
-
-                    response = self.llm.generate(
-                        context=session.context(),
-                        tools=tool_schemas,
+                else:
+                    event = ToolEvent(
+                        call=call,
+                        output=tool_response.output,
+                        update_when=tool_response.update_when,
+                        update_scope=tool_response.update_scope,
                     )
+
+                call_log.events.append(event.to_log())
+                session.add_event(event)
+
+            final_memory = session.memory_log()
+            call_log.final_memory = final_memory
+            initial_memory = final_memory
+
+            response = self.llm.generate(
+                context=session.context(),
+                tools=tool_schemas,
+            )
+
+    def _run_query(self, query: str) -> str:
+        try:
+            with QuerySession(
+                    query=query,
+                    memory=self.memory,
+                    query_logger=self.logger,
+            ) as session:
+                with self.tools_api as api:
+                    return self._run_agent_loop(session, api)
+
+        except Exception:
+            try:
+                self.logger.log()
+            except Exception:
+                logger.exception(
+                    "Failed to persist query log after query failure."
+                )
+
+            raise
 
     @staticmethod
     def _command(accept_args: bool = False):
@@ -236,8 +254,7 @@ class Assistant:
 
         if len(args) == 0:
             return (
-                f"Current model: {self.llm.model_data.id}\n"
-                f"Effective reasoning: {self.llm.config.reasoning}"
+                f"Current model: {self.llm.model_data.id}"
             )
 
         if len(args) > 1:

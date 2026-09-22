@@ -1,5 +1,5 @@
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Self
 import json
 
@@ -17,7 +17,7 @@ class Config(BaseModel):
     model_name: str
     reasoning: str | None = None
 
-    max_iters: int
+    max_iters: int = Field(ge=1)
 
     log_path: Path
 

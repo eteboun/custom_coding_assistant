@@ -26,8 +26,8 @@ class MutationSummary(LogElement, ContextElement):
 @dataclass
 class QueryRecord(LogElement, ContextElement):
     query: str
-    final_response: str
     loop_completed: bool
+    final_response: str | None
     mutation_summaries: list[MutationSummary]
 
     def to_log(self) -> dict:
@@ -63,7 +63,7 @@ class ToolEvent(LogElement, ContextElement):
     update_scope: UpdateScope | None = None
 
     def is_fail(self) -> bool:
-        return self.output.output.is_fail()
+        return self.output.is_fail()
 
     def to_log(self) -> dict:
         update_when = {
@@ -257,7 +257,7 @@ class ActiveMemory(LogElement):
                 Learning(
                     tool=event.call.name,
                     args=event.call.args,
-                    message=event.output.output.message,
+                    message=event.output.message,
                     metadata=event.output.learning_metadata
                 )
             )

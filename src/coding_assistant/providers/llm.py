@@ -1,9 +1,7 @@
 from typing import assert_never
 
 from .base import BaseLLM
-from .google import GeminiLLM
 from .openai import OpenAILLM
-from .anthropic import AnthropicLLM
 
 from coding_assistant.assistant.config import Config
 
@@ -23,18 +21,6 @@ def create_llm(
     match model_data.provider:
         case "openai":
             return OpenAILLM(
-                instructions=instructions,
-                config=config
-            )
-
-        case "google":
-            return GeminiLLM(
-                instructions=instructions,
-                config=config
-            )
-
-        case "anthropic":
-            return AnthropicLLM(
                 instructions=instructions,
                 config=config
             )

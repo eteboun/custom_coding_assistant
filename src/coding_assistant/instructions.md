@@ -39,7 +39,7 @@ Continue with independent work when possible; otherwise report that the requeste
 Implement the smallest coherent solution that fully satisfies the request.
 
 * Use `apply_patch` for file creation, modification, and deletion.
-* Use `delete_dir` only to remove an entire directory.
+* Use `delete_directory` only to remove an entire directory.
 * Modify only required files and behavior.
 * Batch related edits when they can safely use the same known state.
 * Reuse existing patterns and interfaces when appropriate.

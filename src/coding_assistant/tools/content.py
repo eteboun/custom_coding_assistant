@@ -102,7 +102,7 @@ class Tools:
                     "description": "Optional 1-based ending line, inclusive.",
                 }
             },
-            required=["path", "start_line", "end_line"],
+            required=["path"],
             additional_properties=False
         ),
         metadata=Metadata(
@@ -205,18 +205,23 @@ class Tools:
                 },
                 "context_lines": {
                     "type": "integer",
-                    "description": "Surrounding lines per match."
+                    "description": "Surrounding lines per match.",
+                    "minimum": 0,
+                    "default": 2
                 },
                 "max_output_lines": {
                     "type": "integer",
-                    "description": "Maximum output lines."
+                    "description": "Maximum output lines.",
+                    "minimum": 1,
+                    "default": 100
                 },
                 "regex": {
                     "type": "boolean",
                     "description": (
                             "Whether to interpret text as a ripgrep regular expression. "
                             "If false, text is matched literally."
-                    )
+                    ),
+                    "default": False
                 }
             },
             required=["query"],
@@ -338,8 +343,8 @@ class Tools:
             mutative=True
         )
     )
-    def delete_dir(self, path: str) -> ToolOutput:
-        return self.workspace.delete_dir(
+    def delete_directory(self, path: str) -> ToolOutput:
+        return self.workspace.delete_directory(
             path=path
         )
 
