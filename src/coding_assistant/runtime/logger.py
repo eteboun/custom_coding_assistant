@@ -10,8 +10,11 @@ from ..models.schema import TokenUsage
 
 @dataclass
 class LLMCallLog(LogElement):
-    initial_memory: dict[str, Any]
     usage: TokenUsage
+    initial_memory: dict[str, Any] | None = field(
+        default=None,
+        init=False
+    )
 
     def to_log(self) -> dict:
         return {
@@ -23,7 +26,10 @@ class LLMCallLog(LogElement):
 @dataclass
 class LLMToolEventLog(LLMCallLog):
     events: list[dict] = field(default_factory=list)
-    final_memory: dict[str, Any] | None = None
+    final_memory: dict[str, Any] | None = field(
+        default=None,
+        init=False
+    )
 
     def to_log(self) -> dict:
         return {
@@ -49,9 +55,9 @@ class QueryLog(LogElement):
     errors: list[Exception] = field(
         default_factory=list
     )
-    session_final_memory: dict[str, Any] = field(
-        init=False,
-        default_factory=dict,
+    session_final_memory: dict[str, Any] | None = field(
+        default=None,
+        init=False
     )
     llm_calls: list[LLMCallLog] = field(
         init=False,

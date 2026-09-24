@@ -1,9 +1,8 @@
-from .schema import ProviderId, ModelData, ReasoningLevel
+from .schema import ModelData, ReasoningLevel
 from .models import models_data
 
-def resolve_model(
-        model_name: str,
-        provider: ProviderId
+def _resolve_model(
+        model_name: str
 ) -> ModelData:
     model_data = models_data.models.get(
         model_name
@@ -14,15 +13,10 @@ def resolve_model(
             f"Model {model_name} is not recognized"
         )
 
-    if model_data.provider != provider:
-        raise ValueError(
-            f"Model {model_name} does not belong to {provider}"
-        )
-
     return model_data
 
 
-def resolve_reasoning(
+def _resolve_reasoning(
         model_data: ModelData,
         reasoning: ReasoningLevel | None
 ) -> ReasoningLevel | None:
@@ -48,3 +42,17 @@ def resolve_reasoning(
         )
 
     return None
+
+def resolve_model_config(
+    model_name: str,
+    reasoning: str | None,
+) -> tuple[ModelData, ReasoningLevel | None]:
+
+    model_data = _resolve_model(model_name)
+
+    effective_reasoning = _resolve_reasoning(
+        model_data=model_data,
+        reasoning=reasoning,
+    )
+
+    return model_data, effective_reasoning

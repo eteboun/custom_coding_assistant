@@ -2,16 +2,17 @@ from pathlib import Path
 from logging import getLogger
 import inspect
 
-from .config import Config
-from .logger import Logger, LLMToolEventLog, LLMFinalCallLog
-from ..memory.memory import ActiveMemory, ShortMemory, LongMemory, ToolEvent
+from ..config.config import Config
+from ..memory.dispatch import create_architecture
+from ..runtime.logger import Logger
+from ..runtime.session import QuerySession
 
-from ..models.models import models_by_provider
-from ..providers.llm import create_llm
+from ..models.operations import resolve_model_config
 
-from ..tools.api import ToolsAPI, ToolsAPIConfig
-from ..utils import RecoverableError, CommandError, MaxIterationsError
-from .session import QuerySession
+from ..providers.dispatch import create_llm
+
+from ..tools.api import ToolsAPI
+from ..utils import RecoverableError, CommandError
 
 logger = getLogger(__name__)
 
@@ -24,18 +25,20 @@ class Assistant:
             config: Config
     ) -> None:
 
-        self.tools_api = ToolsAPI(
-            config=ToolsAPIConfig(
-                repo_path=repo_path,
-                blocked_files=config.blocked_files,
-                blocked_dirs=config.blocked_dirs
-            )
+        model_data, reasoning = resolve_model_config(
+            model_name=config.model_name,
+            reasoning=config.reasoning
         )
 
-        self.memory = ActiveMemory(
-            tools_api=self.tools_api,
-            short_memory=ShortMemory(),
-            long_memory=LongMemory()
+        self.tools_api = ToolsAPI(
+            repo_path=repo_path,
+            blocked_files=config.blocked_files,
+            blocked_dirs=config.blocked_dirs
+        )
+
+        self.architecture, self.memory = create_architecture(
+            name=config.architecture,
+            api=self.tools_api
         )
 
         self.logger = Logger(
@@ -44,14 +47,14 @@ class Assistant:
 
         self.llm = create_llm(
             instructions=instructions,
-            config=config
+            model_data=model_data,
+            reasoning=reasoning,
+            max_iters=config.max_iters
         )
 
-        self.instructions = instructions
-        self.repo_path = repo_path
         self.config = config
-
         self.mapping = self._get_command_function_mapping()
+
         print("Assistant initialized")
 
     @staticmethod
@@ -59,98 +62,27 @@ class Assistant:
         approval = input(f"{message} [y/N]: ")
         return approval.strip().lower() == "y"
 
-    def _run_agent_loop(
-            self,
-            session: QuerySession,
-            api: ToolsAPI
-    ) -> str:
-
-        tool_schemas = api.schemas()
-        initial_memory = session.memory_log()
-
-        response = self.llm.generate(
-            context=session.context(),
-            tools=tool_schemas,
-        )
-
-        for i in range(self.config.max_iters):
-            usage = self.llm.usage(response=response)
-            tool_calls = self.llm.tool_call_contract(response)
-
-            if not tool_calls:
-                output_text = self.llm.output_text(response)
-
-                session.add_llm_call(
-                    LLMFinalCallLog(
-                        initial_memory=initial_memory,
-                        usage=usage,
-                        response=output_text,
-                    )
-                )
-
-                session.complete_loop(output_text)
-                return output_text
-
-            call_log = LLMToolEventLog(
-                usage=usage,
-                initial_memory=initial_memory,
-            )
-            session.add_llm_call(call_log)
-
-            if i == self.config.max_iters - 1:
-                raise MaxIterationsError(
-                    f"Maximum iteration limit reached: "
-                    f"{self.config.max_iters}"
-                )
-
-            for call in tool_calls:
-                tool_response = api.execute_call(
-                    call=call,
-                    approval_handler=self.get_approval
-                )
-
-                if tool_response.is_fail():
-                    event = ToolEvent(
-                        call=call,
-                        output=tool_response.output,
-                    )
-                else:
-                    event = ToolEvent(
-                        call=call,
-                        output=tool_response.output,
-                        update_when=tool_response.update_when,
-                        update_scope=tool_response.update_scope,
-                    )
-
-                call_log.events.append(event.to_log())
-                session.add_event(event)
-
-            final_memory = session.memory_log()
-            call_log.final_memory = final_memory
-            initial_memory = final_memory
-
-            response = self.llm.generate(
-                context=session.context(),
-                tools=tool_schemas,
-            )
-
     def _run_query(self, query: str) -> str:
         try:
             with QuerySession(
-                    query=query,
-                    memory=self.memory,
-                    query_logger=self.logger,
+                query=query,
+                query_logger=self.logger,
+                memory=self.memory
             ) as session:
                 with self.tools_api as api:
-                    return self._run_agent_loop(session, api)
+                    return self.architecture.run(
+                        approval_handler=self.get_approval,
+                        session=session,
+                        api=api,
+                        llm=self.llm,
+                        max_iters=self.config.max_iters
+                    )
 
         except Exception:
             try:
                 self.logger.log()
             except Exception:
-                logger.exception(
-                    "Failed to persist query log after query failure."
-                )
+                logger.exception("Failed to persist query log after query failure.")
 
             raise
 
@@ -166,7 +98,7 @@ class Assistant:
 
         try:
             if query.startswith("/"):
-                command, args = self._parse_command(query)
+                command = self._parse_command(query)
 
                 if command in self.mapping:
                     return self._run_command(
@@ -241,24 +173,7 @@ class Assistant:
         )
 
     @_command()
-    def models(self) -> str:
-        """
-        Shows available models.
-        """
-
-        text: list[str] = []
-        for provider, model_datas in models_by_provider.items():
-            sub_text: list[str] = [f"Provider: {provider.capitalize()}"]
-
-            for model_data in model_datas:
-                sub_text.append(f" {model_data.id}")
-
-            text.append('\n'.join(sub_text))
-
-        return '\n\n'.join(text)
-
-    @_command()
-    def reasoning_level(self) -> str:
+    def reasoning(self) -> str:
         """
         Shows current reasoning level if no reasoning level is provided.
         Changes reasoning level if reasoning level is provided.
@@ -268,18 +183,6 @@ class Assistant:
             f"Current config reasoning: {self.config.reasoning}\n"
             f"Current effective reasoning: {self.llm.reasoning}"
         )
-
-    @_command()
-    def reasoning_levels(self) -> str:
-        """
-        Shows valid reasoning levels.
-        """
-
-        levels = self.llm.model_data.reasoning.levels
-        if levels:
-            return f"Valid reasoning levels: {', '.join(levels)}."
-        else:
-            return f"No reasoning levels configured for model {self.llm.model_data.id}."
 
     @_command()
     def log(self) -> str:

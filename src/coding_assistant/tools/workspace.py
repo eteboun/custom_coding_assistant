@@ -20,13 +20,19 @@ class Workspace:
 
     def __init__(self,
                  repo_path: Path,
-                 blocked_files: list[str],
-                 blocked_dirs: list[str]
+                 blocked_files: list[Path],
+                 blocked_dirs: list[Path]
                  ) -> None:
 
         self.repo_path = repo_path.resolve()
-        self.blocked_files = blocked_files
-        self.blocked_dirs = blocked_dirs
+        self.blocked_files = set(
+            path.as_posix()
+            for path in blocked_files
+        )
+        self.blocked_dirs = set(
+            path.as_posix()
+            for path in blocked_dirs
+        )
 
     @staticmethod
     def _run_ripgrep(
@@ -156,11 +162,11 @@ class Workspace:
             cmd += ["-g", pattern]
 
         for directory in self.blocked_dirs:
-            directory = directory.replace("\\", "/").rstrip("/")
+            directory = directory.as_posix().rstrip("/")
             cmd += ["-g", f"!{directory}/**"]
 
         for file in self.blocked_files:
-            file = file.replace("\\", "/")
+            file = file.as_posix()
             cmd += ["-g", f"!{file}"]
 
         result = self._run_ripgrep(

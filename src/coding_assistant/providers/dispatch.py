@@ -3,26 +3,21 @@ from typing import assert_never
 from .base import BaseLLM
 from .openai import OpenAILLM
 
-from coding_assistant.assistant.config import Config
-
-from ..models.models import models_data
+from ..models.schema import ModelData, ReasoningLevel
 
 def create_llm(
         instructions: str,
-        config: Config
+        model_data: ModelData,
+        reasoning: ReasoningLevel | None,
+        max_iters: int,
 ) -> BaseLLM:
-    model_data = models_data.models.get(config.model_name)
-
-    if model_data is None:
-        raise ValueError(
-            f"Model {config.model_name} not found."
-        )
-
     match model_data.provider:
         case "openai":
             return OpenAILLM(
                 instructions=instructions,
-                config=config
+                reasoning=reasoning,
+                max_iters=max_iters,
+                model_data=model_data
             )
 
         case _:

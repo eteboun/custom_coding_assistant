@@ -1,8 +1,9 @@
 {
 
     "model_name": "gpt-5.6-sol",
-    "reasoning": "medium",
+    "architecture": "active_memory",
 
+    "reasoning": "medium",
     "max_iters": 30,
 
     "log_path": "./logs",

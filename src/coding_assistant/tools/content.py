@@ -12,8 +12,8 @@ from .sandbox import Sandbox
 class Tools:
     def __init__(self,
                  repo_path: Path,
-                 blocked_files: list[str],
-                 blocked_dirs: list[str]
+                 blocked_files: list[Path],
+                 blocked_dirs: list[Path]
                  ) -> None:
 
         self.workspace = Workspace(

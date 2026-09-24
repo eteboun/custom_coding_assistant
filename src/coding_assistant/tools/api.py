@@ -18,12 +18,6 @@ from collections.abc import Callable
 ApprovalHandler = Callable[[str], bool]
 
 @dataclass
-class ToolsAPIConfig:
-    repo_path: Path
-    blocked_files: list[str]
-    blocked_dirs: list[str]
-
-@dataclass
 class ToolsAPIResponse:
     output: ToolOutput
     update_when: dict[Operation, Invalidation]
@@ -33,14 +27,17 @@ class ToolsAPIResponse:
         return self.output.is_fail()
 
 class ToolsAPI:
-    def __init__(self, config: ToolsAPIConfig) -> None:
-        self.config = config
-        self.repo_path = config.repo_path
+    def __init__(
+            self,
+            repo_path: Path,
+            blocked_files: list[Path],
+            blocked_dirs: list[Path]
+    ) -> None:
 
         self._tools = Tools(
-            repo_path=config.repo_path,
-            blocked_files=config.blocked_files,
-            blocked_dirs=config.blocked_dirs
+            repo_path=repo_path,
+            blocked_files=blocked_files,
+            blocked_dirs=blocked_dirs
         )
         self._validators = {
             name: Draft202012Validator({
@@ -79,7 +76,7 @@ class ToolsAPI:
         return ToolsAPIResponse(
             output=ToolOutput(
                 status="denied",
-                message=reason
+                message=reason,
             ),
             update_when={},
             update_scope=None

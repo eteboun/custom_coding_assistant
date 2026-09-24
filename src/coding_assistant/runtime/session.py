@@ -1,7 +1,8 @@
-from ..memory.memory import ActiveMemory, ToolEvent
-from .logger import Logger, QueryLog, LLMCallLog
+from ..memory.memory import Memory
+from ..tools.context import ToolEvent
+from ..runtime.logger import Logger, QueryLog, LLMCallLog
 
-from typing import Self, Any
+from typing import Self
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -11,8 +12,8 @@ class QuerySession:
     def __init__(
         self,
         query: str,
-        memory: ActiveMemory,
         query_logger: Logger,
+        memory: Memory | None = None
     ) -> None:
         self.query = query
         self.memory = memory
@@ -26,9 +27,11 @@ class QuerySession:
         self.loop_completed = False
 
     def __enter__(self) -> Self:
-        self.memory.start_session(
-            query=self.query
-        )
+        if self.memory is not None:
+            self.memory.start_query(
+                query=self.query
+            )
+
         return self
 
     def __exit__(
@@ -40,11 +43,13 @@ class QuerySession:
         cleanup_errors: list[Exception] = []
 
         try:
-            self.memory.finish_session(
-                output=self.output,
-                loop_completed=self.loop_completed,
-            )
-            self.query_log.session_final_memory = self.memory_log()
+            if self.memory is not None:
+                self.memory.finish_query(
+                    output=self.output,
+                    loop_completed=self.loop_completed
+                )
+
+                self.query_log.session_final_memory = self.memory.to_log()
 
         except Exception as error:
             cleanup_errors.append(error)
@@ -84,15 +89,20 @@ class QuerySession:
         return False
 
     def add_event(self, event: ToolEvent) -> None:
+        if self.memory is None:
+            raise RuntimeError(
+                "Memory required for event accumulation"
+            )
+
         self.memory.add_event(event)
 
     def add_llm_call(self, llm_call: LLMCallLog) -> None:
         self.query_log.add_llm_call(llm_call)
 
-    def memory_log(self) -> dict[str, Any]:
-        return self.memory.to_log()
-
     def context(self) -> str:
+        if self.memory is None:
+            return self.query
+
         return self.memory.format_context()
 
     def complete_loop(self, output: str) -> None:

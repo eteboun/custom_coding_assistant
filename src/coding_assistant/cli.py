@@ -3,8 +3,9 @@ import logging
 
 from pathlib import Path
 
-from coding_assistant.assistant.assistant import Assistant
-from coding_assistant.assistant.config import Config, instructions, config_file
+from .assistant.assistant import Assistant
+from coding_assistant.config.config import Config
+from .utils import instructions, config_file
 
 from dotenv import load_dotenv
 

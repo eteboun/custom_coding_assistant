@@ -1,28 +1,32 @@
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Self
 import json
 
-_BASE_DIR = Path(__file__).resolve().parent.parent
-
-instructions = (
-    _BASE_DIR / "instructions.md"
-).read_text()
-
-config_file = _BASE_DIR / "assistant.json"
-models_json = _BASE_DIR / "models.json"
+from ..models.schema import ReasoningLevel
+from ..models.operations import resolve_model_config
+from coding_assistant.memory.architectures import ArchitectureName
 
 class Config(BaseModel):
 
     model_name: str
-    reasoning: str | None = None
+    reasoning: ReasoningLevel | None
+    architecture: ArchitectureName
 
     max_iters: int = Field(ge=1)
 
     log_path: Path
 
-    blocked_files: list[str]
-    blocked_dirs: list[str]
+    blocked_files: list[Path]
+    blocked_dirs: list[Path]
+
+    @model_validator(mode="after")
+    def validate_model_reasoning(self) -> Self:
+        resolve_model_config(
+            model_name=self.model_name,
+            reasoning=self.reasoning
+        )
+        return self
 
     @staticmethod
     def _validate_json_path(json_path: Path) -> None:

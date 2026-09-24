@@ -1,34 +1,26 @@
 from abc import ABC, abstractmethod
 
-from ..models.operations import resolve_reasoning, resolve_model
-from ..models.schema import ProviderId, TokenUsage
+from ..models.schema import TokenUsage, ReasoningLevel, ModelData
 
-from coding_assistant.assistant.config import Config
-
-from ..tools.context import ToolCall
+from ..tools.context import ToolCall, ToolOutput
 from ..tools.schema import ToolSchema
 
 class BaseLLM[ClientT](ABC):
     def __init__(
         self,
         instructions: str,
-        config: Config,
-        client: ClientT,
-        provider: ProviderId
-        ):
-        self.config = config
+        model_data: ModelData,
+        reasoning: ReasoningLevel | None,
+        max_iters: int,
+        client: ClientT
+        ) -> None:
+
         self.client = client
         self.instructions = instructions
 
-        self.model_data = resolve_model(
-            model_name=config.model_name,
-            provider=provider
-        )
-
-        self.reasoning = resolve_reasoning(
-            model_data=self.model_data,
-            reasoning=config.reasoning
-        )
+        self.model_data = model_data
+        self.reasoning = reasoning
+        self.max_iters = max_iters
 
     @abstractmethod
     def usage(self, response) -> TokenUsage:
@@ -43,13 +35,22 @@ class BaseLLM[ClientT](ABC):
         ...
 
     @abstractmethod
+    def tool_output_contract(self, outputs: list[ToolOutput]):
+        ...
+
+    @abstractmethod
     def tool_schema_contract(self, tools: list[ToolSchema]):
         ...
 
     @abstractmethod
     def generate(
             self,
-            context: str,
-            tools: list[ToolSchema]
+            input_: str | list[tuple[ToolCall, ToolOutput]],
+            tools: list[ToolSchema],
+            prev_id: str | None = None
             ):
+        ...
+
+    @abstractmethod
+    def response_id(self, response) -> str:
         ...

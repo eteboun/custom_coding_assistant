@@ -18,8 +18,8 @@ class Sandbox:
         self,
         repo_path: Path,
         *,
-        blocked_files: list[str] | None = None,
-        blocked_dirs: list[str] | None = None,
+        blocked_files: list[Path] | None = None,
+        blocked_dirs: list[Path] | None = None,
         image: str = "python:3.13-slim",
         memory: str = "512m",
         cpus: float = 1.0,
@@ -27,8 +27,17 @@ class Sandbox:
         timeout: float = 30.0,
     ) -> None:
         self.repo_path = repo_path.resolve()
-        self.blocked_files = set(blocked_files or [])
-        self.blocked_dirs = set(blocked_dirs or [])
+
+        self.blocked_files = set(
+            path.as_posix()
+            for path in blocked_files
+        ) if blocked_files else set()
+
+        self.blocked_dirs = set(
+            path.as_posix()
+            for path in blocked_dirs
+        ) if blocked_dirs else set()
+
         self.image = image
         self.memory = memory
         self.cpus = cpus

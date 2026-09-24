@@ -7,30 +7,49 @@ from openai.types.responses import Response
 from openai.types.responses import FunctionToolParam
 
 from .base import BaseLLM
-from ..tools.schema import ToolSchema
 
-from ..models.schema import TokenUsage
-from coding_assistant.assistant.config import Config
-from ..tools.context import ToolCall
+from ..tools.schema import ToolSchema
+from ..tools.context import ToolOutput, ToolCall
+from ..models.schema import TokenUsage, ModelData, ReasoningLevel
 
 class OpenAILLM(BaseLLM[OpenAI]):
     def __init__(
             self,
             instructions: str,
-            config: Config
+            model_data: ModelData,
+            reasoning: ReasoningLevel | None,
+            max_iters: int
     ):
         super().__init__(
             instructions=instructions,
-            config=config,
-            provider="openai",
+            model_data=model_data,
+            reasoning=reasoning,
+            max_iters=max_iters,
             client=OpenAI()
         )
 
     @override
+    def tool_output_contract(
+            self, results: list[tuple[ToolCall, ToolOutput]]
+    ) -> list[dict]:
+        return [
+            {
+                "type": "function_call_output",
+                "call_id": call.id,
+                "output": json.dumps(
+                    output.to_context(),
+                    ensure_ascii=False
+                ),
+            }
+            for call, output in results
+        ]
+
+    @override
     def generate(
             self,
-            context: str,
-            tools: list[ToolSchema]
+            input_: str | list[tuple[ToolCall, ToolOutput]],
+            tools: list[ToolSchema],
+            prev_id: str | None = None
             ) -> Response:
         kwargs = {}
 
@@ -39,10 +58,19 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 effort=self.reasoning
             )
 
+        if prev_id is not None:
+            kwargs["previous_response_id"] = prev_id
+
+        input_ = (
+            input_
+            if isinstance(input_, str)
+            else self.tool_output_contract(input_)
+        )
+
         response = self.client.responses.create(
             model=self.model_data.id,
             instructions=self.instructions,
-            input=context,
+            input=input_,
             tools=self.tool_schema_contract(
                 tools=tools
             ),
@@ -76,6 +104,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
                 args=json.loads(
                     item.arguments
                 ),
+                id=item.call_id
             )
             for item in response.output
             if item.type == "function_call"
@@ -98,3 +127,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
             }
             for tool_data in tools
         ]
+
+    @override
+    def response_id(self, response: Response) -> str:
+        return response.id
