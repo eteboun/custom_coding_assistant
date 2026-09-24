@@ -8,6 +8,7 @@ from typing import ClassVar
 
 from .apply_patch import _parse_patch, _apply_update, _parse_added_file
 from .context import ToolOutput, Mutation, Operation, ToolUsageError, LearningMetadata
+from .path_policy import is_blocked_path, normalize_blocked_paths
 from ..utils import ToolEnvironmentError
 
 
@@ -25,14 +26,8 @@ class Workspace:
                  ) -> None:
 
         self.repo_path = repo_path.resolve()
-        self.blocked_files = set(
-            path.as_posix()
-            for path in blocked_files
-        )
-        self.blocked_dirs = set(
-            path.as_posix()
-            for path in blocked_dirs
-        )
+        self.blocked_files = normalize_blocked_paths(blocked_files)
+        self.blocked_dirs = normalize_blocked_paths(blocked_dirs)
 
     @staticmethod
     def _run_ripgrep(
@@ -86,15 +81,18 @@ class Workspace:
             )
 
         relative = full_path.relative_to(self.repo_path)
-
-        if full_path.name in self.blocked_files:
+        lexical_path = Path(os.path.abspath(self.repo_path / path))
+        try:
+            lexical_relative = lexical_path.relative_to(self.repo_path)
+        except ValueError as error:
             raise ToolUsageError(
-                f"{relative.as_posix()} is not accessible"
-            )
+                "Access outside the repository is denied"
+            ) from error
 
-        relative_parts = full_path.relative_to(self.repo_path).parts
-
-        if any(part in self.blocked_dirs for part in relative_parts):
+        if any(
+            is_blocked_path(candidate, self.blocked_files, self.blocked_dirs)
+            for candidate in (relative, lexical_relative)
+        ):
             raise ToolUsageError(
                 "Path is not accessible"
             )
@@ -161,13 +159,11 @@ class Workspace:
         if pattern:
             cmd += ["-g", pattern]
 
-        for directory in self.blocked_dirs:
-            directory = directory.as_posix().rstrip("/")
-            cmd += ["-g", f"!{directory}/**"]
+        for directory in sorted(self.blocked_dirs):
+            cmd += ["-g", f"!/{directory.as_posix()}/**"]
 
-        for file in self.blocked_files:
-            file = file.as_posix()
-            cmd += ["-g", f"!{file}"]
+        for file in sorted(self.blocked_files):
+            cmd += ["-g", f"!/{file.as_posix()}"]
 
         result = self._run_ripgrep(
             cmd=cmd,
@@ -224,11 +220,11 @@ class Workspace:
         if not regex:
             cmd.append("--fixed-strings")
 
-        for file in self.blocked_files:
-            cmd.extend(["-g", f"!{file}"])
+        for file in sorted(self.blocked_files):
+            cmd.extend(["-g", f"!/{file.as_posix()}"])
 
-        for directory in self.blocked_dirs:
-            cmd.extend(["-g", f"!{directory}/**"])
+        for directory in sorted(self.blocked_dirs):
+            cmd.extend(["-g", f"!/{directory.as_posix()}/**"])
 
         cmd.extend([
             "--",

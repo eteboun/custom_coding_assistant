@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 import tempfile
@@ -7,6 +6,7 @@ from logging import getLogger
 from pathlib import Path
 
 from .context import ToolOutput, ToolUsageError
+from .path_policy import normalize_blocked_paths
 
 logger = getLogger(__name__)
 
@@ -28,15 +28,8 @@ class Sandbox:
     ) -> None:
         self.repo_path = repo_path.resolve()
 
-        self.blocked_files = set(
-            path.as_posix()
-            for path in blocked_files
-        ) if blocked_files else set()
-
-        self.blocked_dirs = set(
-            path.as_posix()
-            for path in blocked_dirs
-        ) if blocked_dirs else set()
+        self.blocked_files = normalize_blocked_paths(blocked_files or [])
+        self.blocked_dirs = normalize_blocked_paths(blocked_dirs or [])
 
         self.image = image
         self.memory = memory
@@ -51,27 +44,15 @@ class Sandbox:
     def _blocked_paths(self) -> list[tuple[Path, bool]]:
         blocked: list[tuple[Path, bool]] = []
 
-        for root, directories, files in os.walk(
-                self.repo_path,
-                followlinks=False,
-        ):
-            root_path = Path(root)
-            allowed_directories: list[str] = []
+        for relative in sorted(self.blocked_files | self.blocked_dirs):
+            if any(parent in self.blocked_dirs for parent in relative.parents):
+                continue
 
-            for name in directories:
-                path = root_path / name
-
-                if name in self.blocked_dirs or name in self.blocked_files:
-                    blocked.append((path.relative_to(self.repo_path), True))
-                else:
-                    allowed_directories.append(name)
-
-            directories[:] = allowed_directories
-
-            for name in files:
-                if name in self.blocked_files or name in self.blocked_dirs:
-                    path = root_path / name
-                    blocked.append((path.relative_to(self.repo_path), False))
+            path = self.repo_path / relative
+            if path.is_dir():
+                blocked.append((relative, True))
+            elif path.exists() or path.is_symlink():
+                blocked.append((relative, False))
 
         return sorted(blocked, key=lambda entry: entry[0].as_posix())
 
