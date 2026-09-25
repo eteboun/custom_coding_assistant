@@ -167,6 +167,14 @@ def _apply_update(
         lines: list[str],
 ) -> str:
     newline = "\r\n" if "\r\n" in initial_content else "\n"
+    # Keep offsets into the original text so untouched line endings survive.
+    original_lines = initial_content.split("\n")
+    if original_lines[-1] == "":
+        original_lines.pop()
+    line_offsets = [0]
+    for line in original_lines:
+        line_offsets.append(min(line_offsets[-1] + len(line) + 1, len(initial_content)))
+    line_texts = [line.removesuffix("\r") for line in original_lines]
 
     raw_hunks: list[list[str]] = []
     current: list[str] = []
@@ -223,30 +231,32 @@ def _apply_update(
                 f"Hunk {index} contains no existing text."
             )
 
-        old_text = newline.join(old_lines)
-        new_text = newline.join(new_lines)
+        matches = [
+            start
+            for start in range(len(line_texts) - len(old_lines) + 1)
+            if line_texts[start:start + len(old_lines)] == old_lines
+        ]
 
-        first = initial_content.find(old_text)
-
-        if first == -1:
+        if not matches:
             raise ToolUsageError(
                 f"Hunk {index} target was not found."
             )
 
-        second = initial_content.find(
-            old_text,
-            first + 1,
-        )
-
-        if second != -1:
+        if len(matches) > 1:
             raise ToolUsageError(
                 f"Hunk {index} target is ambiguous."
             )
 
+        start = line_offsets[matches[0]]
+        end = line_offsets[matches[0] + len(old_lines)]
+        new_text = newline.join(new_lines)
+        if new_lines and initial_content[start:end].endswith("\n"):
+            new_text += newline
+
         hunks.append(
             Hunk(
-                start=first,
-                end=first + len(old_text),
+                start=start,
+                end=end,
                 new_text=new_text,
             )
         )

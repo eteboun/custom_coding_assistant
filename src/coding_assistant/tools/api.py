@@ -127,6 +127,22 @@ class ToolsAPI:
                     f"Tool {call.name} requires a nonempty mutation summary"
                 )
 
+            approval = tool_data.metadata.approval
+            if approval is not None:
+                message = approval.template.format(**call.args)
+
+                if approval_handler is None:
+                    raise RuntimeError(
+                        f"Approval handler required for tool '{call.name}'"
+                    )
+
+                if not approval_handler(message):
+                    return self._denied_response(
+                        reason="the user denied approval"
+                    )
+
+            output = tool(**call.args)
+
         except ToolUsageError as error:
             return ToolsAPIResponse(
                 output=ToolOutput(
@@ -137,22 +153,6 @@ class ToolsAPI:
                 update_when={},
                 update_scope=None
             )
-
-        approval = tool_data.metadata.approval
-        if approval is not None:
-            message = approval.template.format(**call.args)
-
-            if approval_handler is None:
-                raise RuntimeError(
-                    f"Approval handler required for tool '{call.name}'"
-                )
-
-            if not approval_handler(message):
-                return self._denied_response(
-                    reason="the user denied approval"
-                )
-
-        output = tool(**call.args)
 
         return ToolsAPIResponse(
             output=output,

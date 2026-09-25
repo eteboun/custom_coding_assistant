@@ -97,6 +97,10 @@ class ActiveMemory(Memory):
             self.short_memory.events.append(event)
             return
 
+        self.short_memory.pending_mutations.append(
+            MutationSummary.from_event(event)
+        )
+
         mutations = event.output.mutations
         updated_events: list[ToolEvent] = []
 
@@ -119,17 +123,7 @@ class ActiveMemory(Memory):
                 if not saved_event.is_fail():
                     updated_events.append(saved_event)
 
-
         self.short_memory.events = updated_events
-
-        assert event.call.mutation_summary is not None
-
-        self.short_memory.pending_mutations.append(
-            MutationSummary(
-                name=event.call.name,
-                summary=event.call.mutation_summary,
-            )
-        )
 
     def finish_query(
             self,
@@ -220,10 +214,7 @@ class PersistentMemory(Memory):
             return
 
         self.intermediate_memory.mutations.append(
-            MutationSummary(
-                name=event.call.name,
-                summary=event.call.mutation_summary
-            )
+            MutationSummary.from_event(event)
         )
 
     def to_log(self) -> dict:

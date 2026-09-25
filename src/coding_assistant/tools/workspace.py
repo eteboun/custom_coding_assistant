@@ -420,7 +420,11 @@ class Workspace:
 
         file_length = len(lines)
         if file_length == 0:
-            raise ToolUsageError(f"File {relative} is empty.")
+            return ToolOutput(
+                status="success",
+                message="File is empty.",
+                files=(relative,),
+            )
 
         start = start_line if start_line is not None else 1
         end = end_line if end_line is not None else file_length
@@ -687,7 +691,7 @@ class Workspace:
 
         return ToolOutput(
             status="success",
-            content=message,
+            message=message,
             files=files,
             mutations=mutations
         )

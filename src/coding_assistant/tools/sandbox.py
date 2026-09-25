@@ -2,11 +2,13 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+import hashlib
+import os
 from logging import getLogger
 from pathlib import Path
 
-from .context import ToolOutput, ToolUsageError
-from .path_policy import normalize_blocked_paths
+from .context import Mutation, Operation, ToolOutput, ToolUsageError
+from .path_policy import is_blocked_path, normalize_blocked_paths
 
 logger = getLogger(__name__)
 
@@ -173,10 +175,58 @@ class Sandbox:
                 f"Failed to remove sandbox: {stderr}"
             )
 
+    def _repo_snapshot(self) -> dict[str, tuple[str, str]]:
+        snapshot: dict[str, tuple[str, str]] = {}
+
+        def walk(directory: Path) -> None:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    path = Path(entry.path)
+                    relative = path.relative_to(self.repo_path)
+                    if is_blocked_path(relative, self.blocked_files, self.blocked_dirs):
+                        continue
+
+                    key = relative.as_posix()
+                    if entry.is_symlink():
+                        snapshot[key] = ("symlink", os.readlink(entry.path))
+                    elif entry.is_dir(follow_symlinks=False):
+                        snapshot[key] = ("directory", "")
+                        walk(path)
+                    elif entry.is_file(follow_symlinks=False):
+                        digest = hashlib.sha256()
+                        with open(entry.path, "rb") as file:
+                            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                                digest.update(chunk)
+                        snapshot[key] = ("file", digest.hexdigest())
+
+        walk(self.repo_path)
+        return snapshot
+
+    @staticmethod
+    def _snapshot_mutations(
+        before: dict[str, tuple[str, str]],
+        after: dict[str, tuple[str, str]],
+    ) -> tuple[Mutation, ...]:
+        mutations = []
+        for path in sorted(before.keys() | after.keys()):
+            if path not in before:
+                operation = Operation.ADD
+            elif path not in after:
+                operation = Operation.DELETE
+            elif before[path] != after[path]:
+                operation = Operation.UPDATE
+            else:
+                continue
+            mutations.append(
+                Mutation(path=path, type=operation)
+            )
+        return tuple(mutations)
+
     def run_command(self, command: str) -> ToolOutput:
         if not self._started:
             raise SandboxError("Sandbox is not running.")
 
+        before = self._repo_snapshot()
         try:
             result = subprocess.run(
                 [
@@ -196,18 +246,14 @@ class Sandbox:
                 f"Command timed out after {self.timeout} seconds."
             ) from exc
 
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
-
-        message = f"Exit code: {result.returncode}"
-
-        if stdout:
-            message += f"\nStdout:\n{stdout}"
-
-        if stderr:
-            message += f"\nStderr:\n{stderr}"
-
+        mutations = self._snapshot_mutations(before, self._repo_snapshot())
         return ToolOutput(
             status="success",
-            content=message
+            content={
+                "exit_code": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            },
+            files=tuple(mutation.path for mutation in mutations),
+            mutations=mutations,
         )

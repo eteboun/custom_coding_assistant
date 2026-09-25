@@ -382,14 +382,23 @@ class Tools:
                 "command": {
                     "type": "string",
                     "description": "The shell command to execute."
+                },
+                "change_summary": {
+                    "type": "string",
+                    "description": (
+                        "Describe any repository changes the command is expected "
+                        "to make. If none are expected, state that. This summary "
+                        "is saved only when changes are detected."
+                    ),
                 }
             },
-            required=["command"],
+            required=["command", "change_summary"],
             additional_properties=False
         ),
         metadata=Metadata(
             update_scope=None,
             update_when={},
+            mutative=True,
             approval=Approval(
                 template="Agent wants to run this command: {command}"
             )

@@ -1,23 +1,45 @@
 from dataclasses import dataclass, field
+from typing import Any, Self
 
-from ..tools.context import LearningMetadata, ToolEvent
+from ..tools.context import LearningMetadata, Mutation, ToolEvent
 from ..utils import LogElement, ContextElement, FormattableContext, format_context_structure
 
 @dataclass(frozen=True)
 class MutationSummary(LogElement, ContextElement):
     name: str
     summary: str
+    mutations: tuple[Mutation, ...]
+    outcome: dict[str, Any]
+
+    @classmethod
+    def from_event(cls, event: ToolEvent) -> Self:
+        assert event.call.mutation_summary is not None
+        output = event.output
+        return cls(
+            name=event.call.name,
+            summary=event.call.mutation_summary,
+            mutations=output.mutations,
+            outcome={
+                "status": output.status,
+                "content": output.to_context()["content"],
+                "message": output.message,
+            },
+        )
 
     def to_log(self) -> dict:
         return {
             "name": self.name,
-            "summary": self.summary
+            "summary": self.summary,
+            "mutations": [mutation.to_log() for mutation in self.mutations],
+            "outcome": self.outcome,
         }
 
     def to_context(self):
         return {
             "name": self.name,
-            "summary": self.summary
+            "summary": self.summary,
+            "mutations": [mutation.to_log() for mutation in self.mutations],
+            "outcome": self.outcome,
         }
 
 @dataclass

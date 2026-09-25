@@ -72,11 +72,8 @@ class ToolOutput(LogElement, ContextElement):
         if self.status not in get_args(Status):
             raise ValueError(f"Invalid status: {self.status}")
 
-        if self.status == "success" and self.content is None:
-            raise ValueError("Successful output must contain content")
-
-        if self.status in ("error", "denied") and self.message is None:
-            raise ValueError("Unsuccessful output must contain a message")
+        if self.status == "error" and self.message is None:
+            raise ValueError("Error output must contain a message")
 
         if self.status == "error" and self.learning_metadata is None:
             raise ValueError("Error output must contain a learning metadata")
@@ -110,7 +107,8 @@ class ToolOutput(LogElement, ContextElement):
                 if isinstance(self.content, LogElement)
                 else self.content
             ),
-            "message": self.message
+            "message": self.message,
+            "mutations": [mutation.to_log() for mutation in self.mutations],
         }
 
     def is_fail(self) -> bool:
