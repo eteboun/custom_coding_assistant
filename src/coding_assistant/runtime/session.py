@@ -3,7 +3,9 @@ from ..tools.context import ToolEvent
 from ..runtime.logger import Logger, QueryLog, LLMCallLog
 
 from typing import Self
+from datetime import timedelta
 from logging import getLogger
+from time import perf_counter
 
 logger = getLogger(__name__)
 
@@ -25,8 +27,11 @@ class QuerySession:
 
         self.output: str | None = None
         self.loop_completed = False
+        self.timedelta = timedelta()
+        self._started_at: float | None = None
 
     def __enter__(self) -> Self:
+        self._started_at = perf_counter()
         if self.memory is not None:
             self.memory.start_query(
                 query=self.query
@@ -55,6 +60,11 @@ class QuerySession:
             cleanup_errors.append(error)
 
         try:
+            if self._started_at is not None:
+                self.timedelta = timedelta(
+                    seconds=perf_counter() - self._started_at
+                )
+                self.query_log.timedelta = self.timedelta
             self.query_logger.add_query_log(
                 self.query_log
             )

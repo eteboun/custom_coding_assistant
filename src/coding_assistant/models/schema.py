@@ -33,9 +33,6 @@ class ModelPricing(BaseModel):
 
     cached_input: float | None = None
 
-    cache_write_5m: float | None = None
-    cache_write_1h: float | None = None
-
 
 class AboveThresholdPricing(BaseModel):
     input: float

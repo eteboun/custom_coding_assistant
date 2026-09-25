@@ -14,6 +14,7 @@ class MutationSummary(LogElement, ContextElement):
     @classmethod
     def from_event(cls, event: ToolEvent) -> Self:
         assert event.call.mutation_summary is not None
+
         output = event.output
         return cls(
             name=event.call.name,

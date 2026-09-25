@@ -42,7 +42,8 @@ class Assistant:
         )
 
         self.logger = Logger(
-            log_path=config.log_path
+            log_path=config.log_path,
+            model_data=model_data,
         )
 
         self.llm = create_llm(
@@ -158,14 +159,14 @@ class Assistant:
             f"Total tokens: {usage.total_tokens}\n"
             f"Reasoning tokens: {usage.reasoning_tokens}\n"
             f"Cached input tokens: {usage.cached_input_tokens}\n"
-            f"Cache write tokens: {usage.cache_write_tokens}"
+            f"Cache write tokens: {usage.cache_write_tokens}\n"
+            f"Total cost (USD): ${self.logger.total_cost_usd():f}"
         )
 
     @_command()
     def model(self) -> str:
         """
         Shows current model if no model name is provided.
-        Changes model if model name is provided.
         """
 
         return (
@@ -176,7 +177,6 @@ class Assistant:
     def reasoning(self) -> str:
         """
         Shows current reasoning level if no reasoning level is provided.
-        Changes reasoning level if reasoning level is provided.
         """
 
         return (
