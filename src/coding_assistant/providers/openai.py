@@ -89,7 +89,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
             reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
             total_tokens=usage.total_tokens,
             cached_input_tokens=usage.input_tokens_details.cached_tokens,
-            cache_write_tokens=usage.input_tokens_details.cache_write_tokens
+            cache_write_tokens=getattr(usage.input_tokens_details, "cache_write_tokens", None)
         )
 
     @override
