@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 from abc import abstractmethod
 
 from ..tools.api import ToolsAPI
-from ..tools.context import ToolEvent, UpdateScope, Operation, Mutation, Invalidation
+from ..mutation import Mutation, Operation
+from ..tools.context import ToolEvent, UpdateScope, Invalidation
 from ..utils import LogElement, FormattableContext, format_context_structure
 
 from .schema import (ShortMemory, LongMemory, IntermediateMemory,

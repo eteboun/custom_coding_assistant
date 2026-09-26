@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .context import Operation, ToolUsageError, LearningMetadata
+from ..mutation import Operation
+from .errors import BackendUsageErrorScope, BackendUsageError
 
 @dataclass(frozen=True)
 class FilePatch:
@@ -20,21 +21,17 @@ def _parse_patch(patch: str) -> list[FilePatch]:
     lines = patch.split("\n")
 
     if not lines or lines[0] != "*** Begin Patch":
-        raise ToolUsageError(
+        raise BackendUsageError(
             "Patch must start with '*** Begin Patch'.",
-            learning=LearningMetadata(
-                persistent=True,
-                key="apply_patch.missing_begin_marker"
-            )
+            error_key="apply_patch.missing_begin_marker",
+            scope=BackendUsageErrorScope.GENERAL,
         )
 
     if lines[-1] != "*** End Patch":
-        raise ToolUsageError(
+        raise BackendUsageError(
             "Patch must end with '*** End Patch'.",
-            learning=LearningMetadata(
-                persistent=True,
-                key="apply_patch.missing_end_marker"
-            )
+            error_key="apply_patch.missing_end_marker",
+            scope=BackendUsageErrorScope.GENERAL,
         )
 
     result: list[FilePatch] = []
@@ -50,12 +47,10 @@ def _parse_patch(patch: str) -> list[FilePatch]:
             )
 
             if path.is_absolute():
-                raise ToolUsageError(
+                raise BackendUsageError(
                     "Patch paths must be relative to the repository.",
-                    learning=LearningMetadata(
-                        persistent=True,
-                        key="apply_patch.non_relative_path"
-                    )
+                    error_key="apply_patch.non_relative_path",
+                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
             path = path.as_posix()
@@ -75,12 +70,10 @@ def _parse_patch(patch: str) -> list[FilePatch]:
             )
 
             if path.is_absolute():
-                raise ToolUsageError(
+                raise BackendUsageError(
                     "Patch paths must be relative to the repository.",
-                    learning=LearningMetadata(
-                        persistent=True,
-                        key="apply_patch.non_relative_path"
-                    )
+                    error_key="apply_patch.non_relative_path",
+                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
             path = path.as_posix()
@@ -100,12 +93,10 @@ def _parse_patch(patch: str) -> list[FilePatch]:
             )
 
             if path.is_absolute():
-                raise ToolUsageError(
+                raise BackendUsageError(
                     "Patch paths must be relative to the repository.",
-                    learning=LearningMetadata(
-                        persistent=True,
-                        key="apply_patch.non_relative_path"
-                    )
+                    error_key="apply_patch.non_relative_path",
+                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
             path = path.as_posix()
@@ -117,8 +108,10 @@ def _parse_patch(patch: str) -> list[FilePatch]:
             )
 
         elif line.startswith("*** "):
-            raise ToolUsageError(
-                f"Unsupported patch metadata: {line}"
+            raise BackendUsageError(
+                f"Unsupported patch metadata: {line}",
+                error_key="apply_patch.unsupported_metadata",
+                scope=BackendUsageErrorScope.SPECIFIC,
             )
 
         else:
@@ -126,12 +119,10 @@ def _parse_patch(patch: str) -> list[FilePatch]:
                 if not line:
                     continue
 
-                raise ToolUsageError(
+                raise BackendUsageError(
                     "Patch content appears before a file operation.",
-                    learning=LearningMetadata(
-                        persistent=True,
-                        key="apply_patch.content_before_operation"
-                    )
+                    error_key="apply_patch.content_before_operation",
+                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
             current.lines.append(line)
@@ -140,23 +131,19 @@ def _parse_patch(patch: str) -> list[FilePatch]:
         result.append(current)
 
     if not result:
-        raise ToolUsageError(
+        raise BackendUsageError(
             "Patch contains no file operations.",
-            learning=LearningMetadata(
-                persistent=True,
-                key="apply_patch.empty_patch"
-            )
+            error_key="apply_patch.empty_patch",
+            scope=BackendUsageErrorScope.GENERAL,
         )
 
     paths = [file_patch.path for file_patch in result]
 
     if len(paths) != len(set(paths)):
-        raise ToolUsageError(
+        raise BackendUsageError(
             "Each file may appear only once in a patch; combine all changes to the same file into one file operation.",
-            learning=LearningMetadata(
-                persistent=True,
-                key="apply_patch.duplicate_file"
-            )
+            error_key="apply_patch.duplicate_file",
+            scope=BackendUsageErrorScope.GENERAL,
         )
 
     return result
@@ -193,8 +180,10 @@ def _apply_update(
             if not line:
                 continue
 
-            raise ToolUsageError(
-                f"Invalid patch line: {line!r}"
+            raise BackendUsageError(
+                f"Invalid patch line: {line!r}",
+                error_key="apply_patch.invalid_update_line",
+                scope=BackendUsageErrorScope.SPECIFIC,
             )
 
         current.append(line)
@@ -203,12 +192,10 @@ def _apply_update(
         raw_hunks.append(current)
 
     if not raw_hunks:
-        raise ToolUsageError(
+        raise BackendUsageError(
             "Update File must contain at least one '@@' hunk.",
-            learning=LearningMetadata(
-                persistent=True,
-                key="apply_patch.no_update_hunk"
-            )
+            error_key="apply_patch.no_update_hunk",
+            scope=BackendUsageErrorScope.GENERAL,
         )
 
     hunks: list[Hunk] = []
@@ -227,8 +214,10 @@ def _apply_update(
         ]
 
         if not old_lines:
-            raise ToolUsageError(
-                f"Hunk {index} contains no existing text."
+            raise BackendUsageError(
+                f"Hunk {index} contains no existing text.",
+                error_key="apply_patch.hunk_without_context",
+                scope=BackendUsageErrorScope.SPECIFIC,
             )
 
         matches = [
@@ -238,12 +227,12 @@ def _apply_update(
         ]
 
         if not matches:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"Hunk {index} target was not found."
             )
 
         if len(matches) > 1:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"Hunk {index} target is ambiguous."
             )
 
@@ -265,12 +254,9 @@ def _apply_update(
 
     for current_, next_hunk in zip(hunks, hunks[1:]):
         if next_hunk.start < current_.end:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "Update hunks must not overlap.",
-                learning=LearningMetadata(
-                    persistent=True,
-                    key="apply_patch.overlapping_update_hunks"
-                )
+                error_key="apply_patch.overlapping_update_hunks"
             )
 
     content = initial_content
@@ -293,12 +279,10 @@ def _parse_added_file(lines: list[str]) -> str:
             continue
 
         if not line.startswith("+"):
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "Every Add File content line must start with '+'.",
-                learning=LearningMetadata(
-                    persistent=True,
-                    key="apply_patch.invalid_add_line"
-                )
+                error_key="apply_patch.invalid_add_line",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         content.append(line[1:])

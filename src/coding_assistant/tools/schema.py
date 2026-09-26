@@ -2,7 +2,8 @@ from collections.abc import Callable
 from typing import Self
 from dataclasses import dataclass
 
-from .context import UpdateScope, Operation, Invalidation
+from ..mutation import Operation
+from .context import UpdateScope, Invalidation
 
 @dataclass(frozen=True)
 class Approval:

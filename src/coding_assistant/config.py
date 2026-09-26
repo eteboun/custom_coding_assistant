@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Self
 import json
 
-from ..models.schema import ReasoningLevel
-from ..models.operations import resolve_model_config
+from coding_assistant.models.schema import ReasoningLevel
+from coding_assistant.models.operations import resolve_model_config
 from coding_assistant.memory.architectures import ArchitectureName
 
 class Config(BaseModel):

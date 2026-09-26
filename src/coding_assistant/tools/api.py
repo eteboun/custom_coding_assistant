@@ -6,9 +6,10 @@ from logging import getLogger
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
+from ..mutation import Operation
 from .content import Tools
 from .context import (ToolCall, ToolOutput, ToolUsageError,
-                      UpdateScope, Operation, Invalidation)
+                      UpdateScope, Invalidation)
 from .schema import ToolSchema
 
 logger = getLogger(__name__)

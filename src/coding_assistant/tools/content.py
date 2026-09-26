@@ -3,10 +3,13 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 
+from ..backends.errors import BackendUsageErrorScope, BackendUsageError
+from ..backends.workspace import Workspace
+from ..backends.sandbox import Sandbox
+from ..backends.results import OperationResult
+from ..mutation import Operation
 from .schema import ToolSchema, Parameters, Metadata, Approval
-from .context import Invalidation, ToolOutput, Operation, UpdateScope
-from .workspace import Workspace
-from .sandbox import Sandbox
+from .context import Invalidation, LearningMetadata, ToolOutput, ToolUsageError, UpdateScope
 
 
 class Tools:
@@ -75,11 +78,27 @@ class Tools:
             for tool in self._tools()
         }
 
-    def tools(self) -> list[str]:
-        return [
-            tool.__name__
-            for tool in self._tools()
-        ]
+    @staticmethod
+    def _to_tool_output(result: OperationResult) -> ToolOutput:
+        return ToolOutput(
+            status="success",
+            content=result.content,
+            files=result.files,
+            mutations=result.mutations
+        )
+
+    def _backend_call(self, method: Callable, **kwargs) -> ToolOutput:
+        try:
+            result = method(**kwargs)
+        except BackendUsageError as error:
+            raise ToolUsageError(
+                str(error),
+                learning=LearningMetadata(
+                    persistent=error.scope is BackendUsageErrorScope.GENERAL,
+                    key=error.error_key,
+                ),
+            ) from error
+        return self._to_tool_output(result)
 
     @_tool(
         description=(
@@ -119,7 +138,7 @@ class Tools:
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> ToolOutput:
-        return self.workspace.read_file(
+        return self._backend_call(self.workspace.read_file,
             path=path,
             start_line=start_line,
             end_line=end_line
@@ -148,7 +167,7 @@ class Tools:
         )
     )
     def list_directory(self, path: str) -> ToolOutput:
-        return self.workspace.list_directory(
+        return self._backend_call(self.workspace.list_directory,
             path=path
         )
 
@@ -190,7 +209,7 @@ class Tools:
             pattern: str | None = None,
             max_results: int = 100
     ) -> ToolOutput:
-        return self.workspace.search_files(
+        return self._backend_call(self.workspace.search_files,
             pattern=pattern,
             max_results=max_results
         )
@@ -242,7 +261,7 @@ class Tools:
                     regex: bool = False,
                     max_output_lines: int = 100
                     ) -> ToolOutput:
-        return self.workspace.search_text(
+        return self._backend_call(self.workspace.search_text,
             text=query,
             context_lines=context_lines,
             max_output_lines=max_output_lines,
@@ -313,7 +332,7 @@ class Tools:
             self,
             patch: str,
     ) -> ToolOutput:
-        return self.workspace.apply_patch(
+        return self._backend_call(self.workspace.apply_patch,
             patch=patch
         )
 
@@ -344,7 +363,7 @@ class Tools:
         )
     )
     def delete_directory(self, path: str) -> ToolOutput:
-        return self.workspace.delete_directory(
+        return self._backend_call(self.workspace.delete_directory,
             path=path
         )
 
@@ -368,7 +387,7 @@ class Tools:
         )
     )
     def repo_tree(self) -> ToolOutput:
-        return self.workspace.repo_tree()
+        return self._backend_call(self.workspace.repo_tree)
 
     @_tool(
         description=(
@@ -405,6 +424,4 @@ class Tools:
         )
     )
     def run_command(self, command: str) -> ToolOutput:
-        return self.sandbox.run_command(
-            command=command
-        )
+        return self._backend_call(self.sandbox.run_command, command=command)

@@ -3,6 +3,10 @@ from enum import StrEnum
 from typing import Any, Literal, get_args
 
 from ..utils import LogElement, ContextElement
+from ..mutation import Mutation, Operation
+
+
+Status = Literal["success", "error", "denied"]
 
 @dataclass(frozen=True)
 class LearningMetadata(LogElement):
@@ -33,30 +37,10 @@ class UpdateScope(StrEnum):
     REPOSITORY = "repository"
     FILE = "file"
 
-class Operation(StrEnum):
-    UPDATE = "update"
-    DELETE = "delete"
-    ADD = "add"
-
 class Invalidation(StrEnum):
     REFRESH = "refresh"
     DISCARD = "discard"
 
-
-@dataclass(frozen=True)
-class Mutation(LogElement):
-    path: str
-    type: Operation
-
-    def to_log(self) -> dict:
-        return {
-            "path": self.path,
-            "type": self.type.value
-        }
-
-Status = Literal[
-    "success", "error", "denied"
-]
 
 @dataclass(frozen=True)
 class ToolOutput(LogElement, ContextElement):
@@ -78,6 +62,14 @@ class ToolOutput(LogElement, ContextElement):
         if self.status == "error" and self.learning_metadata is None:
             raise ValueError("Error output must contain a learning metadata")
 
+    @property
+    def outcome(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "content": self.content,
+            "message": self.message,
+        }
+
     def to_log(self) -> dict:
         return {
             "files": self.files,
@@ -90,24 +82,12 @@ class ToolOutput(LogElement, ContextElement):
                 if self.learning_metadata is not None
                 else None
             ),
-            "status": self.status,
-            "content": (
-                self.content.to_log()
-                if isinstance(self.content, LogElement)
-                else self.content
-            ),
-            "message": self.message
+            **self.outcome,
         }
 
     def to_context(self) -> dict:
         return {
-            "status": self.status,
-            "content": (
-                self.content.to_log()
-                if isinstance(self.content, LogElement)
-                else self.content
-            ),
-            "message": self.message,
+            **self.outcome,
             "mutations": [mutation.to_log() for mutation in self.mutations],
         }
 

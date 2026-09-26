@@ -7,13 +7,13 @@ import os
 from logging import getLogger
 from pathlib import Path
 
-from .context import Mutation, Operation, ToolOutput, ToolUsageError
+from ..mutation import Mutation, Operation
+from .results import OperationResult
+from .errors import BackendDeveloperError, BackendUsageError
 from .path_policy import is_blocked_path, normalize_blocked_paths
 
 logger = getLogger(__name__)
 
-class SandboxError(Exception):
-    pass
 
 class Sandbox:
     def __init__(
@@ -122,7 +122,7 @@ class Sandbox:
             )
 
             if result.returncode != 0:
-                raise SandboxError(
+                raise BackendDeveloperError(
                     f"Failed to start sandbox: {result.stderr.strip()}"
                 )
 
@@ -171,7 +171,7 @@ class Sandbox:
             if "No such container" in stderr:
                 return
 
-            raise SandboxError(
+            raise BackendDeveloperError(
                 f"Failed to remove sandbox: {stderr}"
             )
 
@@ -222,9 +222,9 @@ class Sandbox:
             )
         return tuple(mutations)
 
-    def run_command(self, command: str) -> ToolOutput:
+    def run_command(self, command: str) -> OperationResult:
         if not self._started:
-            raise SandboxError("Sandbox is not running.")
+            raise BackendDeveloperError("Sandbox is not running.")
 
         before = self._repo_snapshot()
         try:
@@ -242,13 +242,13 @@ class Sandbox:
                 timeout=self.timeout,
             )
         except subprocess.TimeoutExpired as exc:
-            raise ToolUsageError(
-                f"Command timed out after {self.timeout} seconds."
+            raise BackendUsageError(
+                f"Command timed out after {self.timeout} seconds.",
+                error_key="sandbox.command_timeout",
             ) from exc
 
         mutations = self._snapshot_mutations(before, self._repo_snapshot())
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content={
                 "exit_code": result.returncode,
                 "stdout": result.stdout,

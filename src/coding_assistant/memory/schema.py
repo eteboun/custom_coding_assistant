@@ -1,14 +1,14 @@
 from dataclasses import dataclass, field
 from typing import Any, Self
 
-from ..tools.context import LearningMetadata, Mutation, ToolEvent
+from ..tools.context import LearningMetadata, ToolEvent
 from ..utils import LogElement, ContextElement, FormattableContext, format_context_structure
 
 @dataclass(frozen=True)
 class MutationSummary(LogElement, ContextElement):
     name: str
     summary: str
-    mutations: tuple[Mutation, ...]
+    mutations: tuple[dict[str, str], ...]
     outcome: dict[str, Any]
 
     @classmethod
@@ -19,19 +19,15 @@ class MutationSummary(LogElement, ContextElement):
         return cls(
             name=event.call.name,
             summary=event.call.mutation_summary,
-            mutations=output.mutations,
-            outcome={
-                "status": output.status,
-                "content": output.to_context()["content"],
-                "message": output.message,
-            },
+            mutations=tuple(mutation.to_log() for mutation in output.mutations),
+            outcome=output.outcome,
         )
 
     def to_log(self) -> dict:
         return {
             "name": self.name,
             "summary": self.summary,
-            "mutations": [mutation.to_log() for mutation in self.mutations],
+            "mutations": list(self.mutations),
             "outcome": self.outcome,
         }
 
@@ -39,7 +35,7 @@ class MutationSummary(LogElement, ContextElement):
         return {
             "name": self.name,
             "summary": self.summary,
-            "mutations": [mutation.to_log() for mutation in self.mutations],
+            "mutations": list(self.mutations),
             "outcome": self.outcome,
         }
 

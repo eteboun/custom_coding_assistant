@@ -2,17 +2,17 @@ from pathlib import Path
 from logging import getLogger
 import inspect
 
-from ..config.config import Config
-from ..memory.dispatch import create_architecture
-from ..runtime.logger import Logger
-from ..runtime.session import QuerySession
+from coding_assistant.config import Config
+from coding_assistant.memory.dispatch import create_architecture
+from coding_assistant.runtime.logger import Logger
+from coding_assistant.runtime.session import QuerySession
 
-from ..models.operations import resolve_model_config
+from coding_assistant.models.operations import resolve_model_config
 
-from ..providers.dispatch import create_llm
+from coding_assistant.providers.dispatch import create_llm
 
-from ..tools.api import ToolsAPI
-from ..utils import RecoverableError, CommandError
+from coding_assistant.tools.api import ToolsAPI
+from coding_assistant.utils import RecoverableError, CommandError
 
 logger = getLogger(__name__)
 

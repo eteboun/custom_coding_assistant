@@ -7,13 +7,11 @@ from pathlib import Path
 from typing import ClassVar
 
 from .apply_patch import _parse_patch, _apply_update, _parse_added_file
-from .context import ToolOutput, Mutation, Operation, ToolUsageError, LearningMetadata
+from ..mutation import Mutation, Operation
+from .results import OperationResult
+from .errors import BackendDeveloperError, BackendUsageErrorScope, BackendUsageError
 from .path_policy import is_blocked_path, normalize_blocked_paths
-from ..utils import ToolEnvironmentError
 
-
-class PatchRollbackError(Exception):
-    pass
 
 class Workspace:
 
@@ -43,7 +41,7 @@ class Workspace:
             )
 
         except FileNotFoundError as e:
-            raise ToolEnvironmentError(
+            raise BackendDeveloperError(
                 "ripgrep is not installed or not available in PATH"
             ) from e
 
@@ -51,15 +49,13 @@ class Workspace:
             message = result.stderr.strip()
 
             if "regex parse error" in message:
-                raise ToolUsageError(
+                raise BackendUsageError(
                     "When using regex search, provide a valid ripgrep regular expression.",
-                    learning=LearningMetadata(
-                        persistent=True,
-                        key="ripgrep.invalid_regex"
-                    )
+                    error_key="ripgrep.invalid_regex",
+                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
-            raise ToolEnvironmentError(
+            raise BackendDeveloperError(
                 f"ripgrep failed: {message}"
             )
 
@@ -72,12 +68,10 @@ class Workspace:
         full_path = (self.repo_path / path).resolve()
 
         if not full_path.is_relative_to(self.repo_path):
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "Access outside the repository is denied",
-                learning=LearningMetadata(
-                    persistent=True,
-                    key="workspace.outside_repository"
-                )
+                error_key="workspace.outside_repository",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         relative = full_path.relative_to(self.repo_path)
@@ -85,16 +79,20 @@ class Workspace:
         try:
             lexical_relative = lexical_path.relative_to(self.repo_path)
         except ValueError as error:
-            raise ToolUsageError(
-                "Access outside the repository is denied"
+            raise BackendUsageError(
+                "Access outside the repository is denied",
+                error_key="workspace.outside_repository",
+                scope=BackendUsageErrorScope.GENERAL,
             ) from error
 
         if any(
             is_blocked_path(candidate, self.blocked_files, self.blocked_dirs)
             for candidate in (relative, lexical_relative)
         ):
-            raise ToolUsageError(
-                "Path is not accessible"
+            raise BackendUsageError(
+                "Path is not accessible",
+                error_key="workspace.blocked_path",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         return full_path
@@ -109,12 +107,12 @@ class Workspace:
         )
 
         if not resolved_path.exists():
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"Directory {path} does not exist"
             )
 
         if not resolved_path.is_dir():
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"{path} is not a directory"
             )
 
@@ -129,12 +127,12 @@ class Workspace:
         )
 
         if not resolved_path.exists():
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"File {path} does not exist"
             )
 
         if not resolved_path.is_file():
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"{path} is not a file"
             )
 
@@ -144,14 +142,12 @@ class Workspace:
             self,
             pattern: str | None = None,
             max_results: int = 100
-    ) -> ToolOutput:
+    ) -> OperationResult:
         if max_results < 1:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "max_results must be at least 1.",
-                learning=LearningMetadata(
-                    persistent=True,
-                    key="search_files.max_results_below_minimum",
-                ),
+                error_key="search_files.max_results_below_minimum",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         cmd = ["rg", "--files"]
@@ -175,7 +171,7 @@ class Workspace:
         for raw_path in result.stdout.splitlines():
             try:
                 full_path = self._resolve_path(raw_path)
-            except ToolUsageError:
+            except BackendUsageError:
                 continue
 
             relative = full_path.relative_to(self.repo_path).as_posix()
@@ -186,8 +182,7 @@ class Workspace:
 
         sorted_files = sorted(files)
 
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content=sorted_files,
             files=tuple(sorted_files)
         )
@@ -198,16 +193,20 @@ class Workspace:
             regex: bool = False,
             context_lines: int = 2,
             max_output_lines: int = 100
-    ) -> ToolOutput:
+    ) -> OperationResult:
 
         if context_lines < 0:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "context_lines must be >= 0.",
+                error_key="search_text.negative_context_lines",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         if max_output_lines < 1:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "max_output_lines must be >= 1.",
+                error_key="search_text.max_output_lines_below_minimum",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         cmd = [
@@ -260,7 +259,7 @@ class Workspace:
 
                         full_paths[path] = full_path
 
-                except ToolUsageError:
+                except BackendUsageError:
                     continue
 
                 relative = full_path.relative_to(
@@ -278,23 +277,21 @@ class Workspace:
 
             sorted_files = sorted(files)
 
-            return ToolOutput(
-                status="success",
+            return OperationResult(
                 content="\n".join(findings),
                 files=tuple(sorted_files)
             )
 
         if result.returncode == 1:
-            return ToolOutput(
-                status="success",
+            return OperationResult(
                 content="No match found"
             )
 
-        raise ToolEnvironmentError(
+        raise BackendDeveloperError(
             f"ripgrep failed: {result.stderr.strip()}"
         )
 
-    def repo_tree(self) -> ToolOutput:
+    def repo_tree(self) -> OperationResult:
         lines: list[str] = []
         files: list[str] = []
 
@@ -316,7 +313,7 @@ class Workspace:
                         path=entry.as_posix()
                     )
 
-                except ToolUsageError:
+                except BackendUsageError:
                     continue
 
                 relative = full_path.relative_to(
@@ -337,13 +334,12 @@ class Workspace:
 
         files.sort()
 
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content="\n".join(lines),
             files=tuple(files)
         )
 
-    def list_directory(self, path: str) -> ToolOutput:
+    def list_directory(self, path: str) -> OperationResult:
         full_dir_path = self._resolve_dir(path=path)
 
         entries: list[str] = []
@@ -352,7 +348,7 @@ class Workspace:
                 full_path = self._resolve_path(
                     path=path.as_posix()
                 )
-            except ToolUsageError:
+            except BackendUsageError:
                 continue
 
             relative = full_path.relative_to(
@@ -363,26 +359,24 @@ class Workspace:
 
         entries.sort()
 
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content=entries,
             files=tuple(entries)
         )
 
-    def delete_directory(self, path: str) -> ToolOutput:
+    def delete_directory(self, path: str) -> OperationResult:
         full_path = self._resolve_dir(path=path)
 
         try:
             full_path.rmdir()
         except OSError as e:
-            raise ToolUsageError(str(e)) from e
+            raise BackendUsageError(str(e)) from e
 
         relative = full_path.relative_to(
             self.repo_path
         ).as_posix()
 
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content=relative,
             files=(relative,),
             mutations=(
@@ -398,15 +392,19 @@ class Workspace:
         path: str,
         start_line: int | None = None,
         end_line: int | None = None,
-    ) -> ToolOutput:
+    ) -> OperationResult:
         if start_line is not None and start_line < 1:
-            raise ToolUsageError(
-                "start_line must be positive when provided."
+            raise BackendUsageError(
+                "start_line must be positive when provided.",
+                error_key="read_file.non_positive_start_line",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         if end_line is not None and end_line < 1:
-            raise ToolUsageError(
-                "end_line must be positive when provided."
+            raise BackendUsageError(
+                "end_line must be positive when provided.",
+                error_key="read_file.non_positive_end_line",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         full_path = self._resolve_file(path=path)
@@ -420,9 +418,8 @@ class Workspace:
 
         file_length = len(lines)
         if file_length == 0:
-            return ToolOutput(
-                status="success",
-                message="File is empty.",
+            return OperationResult(
+                content="File is empty.",
                 files=(relative,),
             )
 
@@ -430,13 +427,15 @@ class Workspace:
         end = end_line if end_line is not None else file_length
 
         if start > file_length:
-            raise ToolUsageError(
+            raise BackendUsageError(
                 f"start_line {start} exceeds file length {file_length}."
             )
 
         if end < start:
-            raise ToolUsageError(
-                "end_line must be greater than or equal to start_line."
+            raise BackendUsageError(
+                "end_line must be greater than or equal to start_line.",
+                error_key="read_file.reversed_line_range",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         end = min(end, file_length)
@@ -452,8 +451,7 @@ class Workspace:
                 f"{num} | {line}"
             )
 
-        return ToolOutput(
-            status="success",
+        return OperationResult(
             content="".join(numbered_lines),
             files=(relative,)
         )
@@ -461,7 +459,7 @@ class Workspace:
     def apply_patch(
             self,
             patch: str,
-    ) -> ToolOutput:
+    ) -> OperationResult:
         patch = patch.replace("\r\n", "\n").replace("\r", "\n")
 
         file_patches = _parse_patch(patch)
@@ -485,9 +483,11 @@ class Workspace:
                         file_patch.lines,
                     )
 
-                except ToolUsageError as e:
-                    raise ToolUsageError(
-                        f"{file_patch.path}: {e}"
+                except BackendUsageError as e:
+                    raise BackendUsageError(
+                        f"{file_patch.path}: {e}",
+                        error_key=e.error_key,
+                        scope=e.scope,
                     ) from e
 
                 pending_writes[full_path] = new_content
@@ -497,9 +497,11 @@ class Workspace:
                 full_path = self._resolve_file(file_patch.path)
 
                 if file_patch.lines:
-                    raise ToolUsageError(
+                    raise BackendUsageError(
                         f"{file_patch.path}: Delete File "
-                        "must not contain patch content."
+                        "must not contain patch content.",
+                        error_key="apply_patch.delete_with_content",
+                        scope=BackendUsageErrorScope.GENERAL,
                     )
 
                 pending_deletes.add(full_path)
@@ -509,7 +511,7 @@ class Workspace:
                 full_path = self._resolve_path(file_patch.path)
 
                 if full_path.exists():
-                    raise ToolUsageError(
+                    raise BackendUsageError(
                         f"{file_patch.path}: File already exists."
                     )
 
@@ -518,7 +520,7 @@ class Workspace:
                         file_patch.lines
                     )
                 except ValueError as e:
-                    raise ToolUsageError(
+                    raise BackendUsageError(
                         f"{file_patch.path}: {e}"
                     ) from e
 
@@ -527,7 +529,7 @@ class Workspace:
             canonical_key = os.path.normcase(os.fspath(full_path))
             previous = resolved_targets.get(canonical_key)
             if previous is not None:
-                raise ToolUsageError(
+                raise BackendUsageError(
                     f"Patch paths {previous!r} and {file_patch.path!r} "
                     "resolve to the same file."
                 )
@@ -538,12 +540,10 @@ class Workspace:
             ).as_posix()
 
         if pending_deletes & pending_writes.keys():
-            raise ToolUsageError(
+            raise BackendUsageError(
                 "A file cannot be both written and deleted.",
-                learning=LearningMetadata(
-                    persistent=True,
-                    key="apply_patch.conflicting_file_operations"
-                )
+                error_key="apply_patch.conflicting_file_operations",
+                scope=BackendUsageErrorScope.GENERAL,
             )
 
         staged_writes: dict[Path, Path] = {}
@@ -654,7 +654,7 @@ class Workspace:
                 paths = ", ".join(
                     sorted({path.as_posix() for path, _ in rollback_errors})
                 )
-                raise PatchRollbackError(
+                raise BackendDeveloperError(
                     "Patch application failed and rollback was incomplete. "
                     f"The following paths may be inconsistent: {paths}"
                 ) from commit_error
@@ -689,9 +689,8 @@ class Workspace:
                 + ", ".join(cleanup_warnings)
             )
 
-        return ToolOutput(
-            status="success",
-            message=message,
+        return OperationResult(
+            content=message,
             files=files,
             mutations=mutations
         )

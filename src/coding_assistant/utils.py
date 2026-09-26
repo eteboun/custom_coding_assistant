@@ -57,6 +57,3 @@ class MaxIterationsError(RecoverableError):
 
 class LogError(RecoverableError):
     pass
-
-class ToolEnvironmentError(RecoverableError):
-    pass
