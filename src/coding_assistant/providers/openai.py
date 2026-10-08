@@ -10,7 +10,7 @@ from openai.types.responses import FunctionToolParam
 from .base import BaseLLM
 
 from ..tools.schema import ToolSchema
-from ..tools.context import ToolOutput, ToolCall
+from ..tools.context import ToolCall
 from ..models.schema import TokenUsage, ModelData, ReasoningLevel
 
 class OpenAILLM(BaseLLM[OpenAI]):
@@ -39,27 +39,10 @@ class OpenAILLM(BaseLLM[OpenAI]):
         return len(encoding.encode_ordinary(text))
 
     @override
-    def tool_output_contract(
-            self, results: list[tuple[ToolCall, ToolOutput]]
-    ) -> list[dict]:
-        return [
-            {
-                "type": "function_call_output",
-                "call_id": call.id,
-                "output": json.dumps(
-                    output.to_context(),
-                    ensure_ascii=False
-                ),
-            }
-            for call, output in results
-        ]
-
-    @override
     def generate(
             self,
-            input_: str | list[tuple[ToolCall, ToolOutput]],
+            input_: str,
             tools: list[ToolSchema],
-            prev_id: str | None = None
             ) -> Response:
         kwargs = {}
 
@@ -67,12 +50,6 @@ class OpenAILLM(BaseLLM[OpenAI]):
             kwargs["reasoning"] = Reasoning(
                 effort=self.reasoning
             )
-
-        if prev_id is not None:
-            kwargs["previous_response_id"] = prev_id
-
-        if not isinstance(input_, str):
-            input_ = self.tool_output_contract(input_)
 
         response = self.client.responses.create(
             model=self.model_data.id,
@@ -137,7 +114,3 @@ class OpenAILLM(BaseLLM[OpenAI]):
             }
             for tool_data in tools
         ]
-
-    @override
-    def response_id(self, response: Response) -> str:
-        return response.id

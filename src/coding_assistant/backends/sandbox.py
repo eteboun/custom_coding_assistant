@@ -252,7 +252,6 @@ class Sandbox:
             self.start()
             raise BackendUsageError(
                 f"Command timed out after {self.timeout} seconds.",
-                error_key="sandbox.command_timeout",
             ) from exc
 
         mutations = self._snapshot_mutations(before, self._repo_snapshot())

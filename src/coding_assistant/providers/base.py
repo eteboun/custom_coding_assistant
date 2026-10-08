@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from ..models.schema import TokenUsage, ReasoningLevel, ModelData
 
-from ..tools.context import ToolCall, ToolOutput
+from ..tools.context import ToolCall
 from ..tools.schema import ToolSchema
 
 
@@ -41,22 +41,13 @@ class BaseLLM[ClientT](ABC):
         ...
 
     @abstractmethod
-    def tool_output_contract(self, outputs: list[ToolOutput]):
-        ...
-
-    @abstractmethod
     def tool_schema_contract(self, tools: list[ToolSchema]):
         ...
 
     @abstractmethod
     def generate(
             self,
-            input_: str | list[tuple[ToolCall, ToolOutput]],
+            input_: str,
             tools: list[ToolSchema],
-            prev_id: str | None = None
             ):
-        ...
-
-    @abstractmethod
-    def response_id(self, response) -> str:
         ...

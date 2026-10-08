@@ -9,7 +9,7 @@ from typing import ClassVar
 from .apply_patch import _parse_patch, _apply_update, _parse_added_file
 from ..mutation import Mutation, Operation
 from .results import OperationResult
-from .errors import BackendDeveloperError, BackendUsageErrorScope, BackendUsageError
+from .errors import BackendDeveloperError, BackendUsageError
 from .path_policy import is_blocked_path, normalize_blocked_paths
 
 
@@ -51,8 +51,6 @@ class Workspace:
             if "regex parse error" in message:
                 raise BackendUsageError(
                     "When using regex search, provide a valid ripgrep regular expression.",
-                    error_key="ripgrep.invalid_regex",
-                    scope=BackendUsageErrorScope.GENERAL,
                 )
 
             raise BackendDeveloperError(
@@ -70,8 +68,6 @@ class Workspace:
         if not full_path.is_relative_to(self.repo_path):
             raise BackendUsageError(
                 "Access outside the repository is denied",
-                error_key="workspace.outside_repository",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         relative = full_path.relative_to(self.repo_path)
@@ -81,8 +77,6 @@ class Workspace:
         except ValueError as error:
             raise BackendUsageError(
                 "Access outside the repository is denied",
-                error_key="workspace.outside_repository",
-                scope=BackendUsageErrorScope.GENERAL,
             ) from error
 
         if any(
@@ -91,8 +85,6 @@ class Workspace:
         ):
             raise BackendUsageError(
                 "Path is not accessible",
-                error_key="workspace.blocked_path",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         return full_path
@@ -146,8 +138,6 @@ class Workspace:
         if max_results < 1:
             raise BackendUsageError(
                 "max_results must be at least 1.",
-                error_key="search_files.max_results_below_minimum",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         cmd = ["rg", "--files"]
@@ -198,15 +188,11 @@ class Workspace:
         if context_lines < 0:
             raise BackendUsageError(
                 "context_lines must be >= 0.",
-                error_key="search_text.negative_context_lines",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         if max_output_lines < 1:
             raise BackendUsageError(
                 "max_output_lines must be >= 1.",
-                error_key="search_text.max_output_lines_below_minimum",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         cmd = [
@@ -396,15 +382,11 @@ class Workspace:
         if start_line is not None and start_line < 1:
             raise BackendUsageError(
                 "start_line must be positive when provided.",
-                error_key="read_file.non_positive_start_line",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         if end_line is not None and end_line < 1:
             raise BackendUsageError(
                 "end_line must be positive when provided.",
-                error_key="read_file.non_positive_end_line",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         full_path = self._resolve_file(path=path)
@@ -434,8 +416,6 @@ class Workspace:
         if end < start:
             raise BackendUsageError(
                 "end_line must be greater than or equal to start_line.",
-                error_key="read_file.reversed_line_range",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         end = min(end, file_length)
@@ -486,8 +466,6 @@ class Workspace:
                 except BackendUsageError as e:
                     raise BackendUsageError(
                         f"{file_patch.path}: {e}",
-                        error_key=e.error_key,
-                        scope=e.scope,
                     ) from e
 
                 pending_writes[full_path] = new_content
@@ -500,8 +478,6 @@ class Workspace:
                     raise BackendUsageError(
                         f"{file_patch.path}: Delete File "
                         "must not contain patch content.",
-                        error_key="apply_patch.delete_with_content",
-                        scope=BackendUsageErrorScope.GENERAL,
                     )
 
                 pending_deletes.add(full_path)
@@ -542,8 +518,6 @@ class Workspace:
         if pending_deletes & pending_writes.keys():
             raise BackendUsageError(
                 "A file cannot be both written and deleted.",
-                error_key="apply_patch.conflicting_file_operations",
-                scope=BackendUsageErrorScope.GENERAL,
             )
 
         staged_writes: dict[Path, Path] = {}

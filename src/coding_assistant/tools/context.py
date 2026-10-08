@@ -7,30 +7,8 @@ from ..mutation import Mutation
 
 Status = Literal["success", "error", "denied"]
 
-@dataclass(frozen=True)
-class LearningMetadata(LogElement):
-    persistent: bool = False
-    key: str | None = None
-
-    def to_log(self) -> dict:
-        return {
-            "persistent": self.persistent,
-            "key": self.key
-        }
-
 class ToolUsageError(Exception):
-    def __init__(
-        self,
-        message: str,
-        *,
-        learning: LearningMetadata | None = None,
-    ):
-        super().__init__(message)
-        self.learning = (
-            learning
-            if learning is not None
-            else LearningMetadata()
-        )
+    pass
 
 @dataclass(frozen=True)
 class ToolOutput(LogElement, ContextElement):
@@ -40,7 +18,6 @@ class ToolOutput(LogElement, ContextElement):
 
     files: tuple[str, ...] = ()
     mutations: tuple[Mutation, ...] = ()
-    learning_metadata: LearningMetadata | None = None
 
     def __post_init__(self):
         if self.status not in get_args(Status):
@@ -49,8 +26,6 @@ class ToolOutput(LogElement, ContextElement):
         if self.status == "error" and self.message is None:
             raise ValueError("Error output must contain a message")
 
-        if self.status == "error" and self.learning_metadata is None:
-            raise ValueError("Error output must contain a learning metadata")
 
     @property
     def outcome(self) -> dict[str, Any]:
@@ -67,11 +42,6 @@ class ToolOutput(LogElement, ContextElement):
                 mutation.to_log()
                 for mutation in self.mutations
             ],
-            "learning_metadata": (
-                self.learning_metadata.to_log()
-                if self.learning_metadata is not None
-                else None
-            ),
             **self.outcome,
         }
 
@@ -81,8 +51,6 @@ class ToolOutput(LogElement, ContextElement):
             "mutations": [mutation.to_log() for mutation in self.mutations],
         }
 
-    def is_fail(self) -> bool:
-        return self.status == "error"
 
 
 @dataclass
@@ -114,8 +82,6 @@ class ToolEvent(LogElement, ContextElement):
     call: ToolCall
     output: ToolOutput
 
-    def is_fail(self) -> bool:
-        return self.output.is_fail()
 
     def to_log(self) -> dict:
         return {

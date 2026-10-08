@@ -3,12 +3,12 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 
-from ..backends.errors import BackendUsageErrorScope, BackendUsageError
+from ..backends.errors import BackendUsageError
 from ..backends.workspace import Workspace
 from ..backends.sandbox import Sandbox
 from ..backends.results import OperationResult
 from .schema import ToolSchema, Parameters, Metadata, Approval
-from .context import LearningMetadata, ToolOutput, ToolUsageError
+from .context import ToolOutput, ToolUsageError
 
 
 class Tools:
@@ -90,13 +90,7 @@ class Tools:
         try:
             result = method(**kwargs)
         except BackendUsageError as error:
-            raise ToolUsageError(
-                str(error),
-                learning=LearningMetadata(
-                    persistent=error.scope is BackendUsageErrorScope.GENERAL,
-                    key=error.error_key,
-                ),
-            ) from error
+            raise ToolUsageError(str(error)) from error
         return self._to_tool_output(result)
 
     @_tool(

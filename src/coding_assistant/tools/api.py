@@ -20,8 +20,6 @@ ApprovalHandler = Callable[[str], bool]
 class ToolsAPIResponse:
     output: ToolOutput
 
-    def is_fail(self) -> bool:
-        return self.output.is_fail()
 
 class ToolsAPI:
     def __init__(
@@ -143,7 +141,6 @@ class ToolsAPI:
                 output=ToolOutput(
                     status="error",
                     message=str(error),
-                    learning_metadata=error.learning
                 ),
             )
 

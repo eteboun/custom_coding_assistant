@@ -93,7 +93,6 @@ class Logger(LogElement):
     log_path: Path
     model_data: ModelData
     query_logs: list[QueryLog] = field(default_factory=list)
-    rough_context: int = 0
 
     def to_log(self) -> dict[str, Any]:
         return {
@@ -103,7 +102,6 @@ class Logger(LogElement):
                 ],
                 "total_usage": self.total_usage().to_log(),
                 "total_timedelta_seconds": self.total_timedelta().total_seconds(),
-                "rough_context": self.rough_context,
                 "model_id": self.model_data.id,
                 "currency": "USD",
             }
@@ -124,8 +122,6 @@ class Logger(LogElement):
 
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)
-        if query_log.llm_calls:
-            self.rough_context = query_log.llm_calls[-1].usage.input_tokens
 
     def log(self) -> str:
         if not self.query_logs:
