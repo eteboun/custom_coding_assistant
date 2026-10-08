@@ -34,10 +34,12 @@ class QuerySession:
         self.loop_completed = False
         self.timedelta = timedelta()
         self._started_at: float | None = None
+        self.memory_start_index = 0
 
     def __enter__(self) -> Self:
         self._started_at = perf_counter()
         if self.memory is not None:
+            self.memory_start_index = len(self.memory.elements)
             self.memory.add_query(
                 query=self.query
             )

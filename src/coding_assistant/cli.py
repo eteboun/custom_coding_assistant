@@ -53,4 +53,4 @@ def main():
         if query in {"exit", "quit"}:
             break
 
-        print(assistant_.query(query=query))
+        print(f"\n{assistant_.query(query=query)}\n")

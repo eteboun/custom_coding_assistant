@@ -53,6 +53,8 @@ The provided memory contains an ordered sequence of queries, assistant output te
 
 After compression, earlier work appears as query records containing the query, final response, mutation summaries, completion status, and stop reason. An incomplete record describes work that may still need follow-up.
 
+If compression happens during the current task, earlier queries become query records while the current query and all of its tool events and assistant texts remain intact. Continue using those active task elements.
+
 Treat it as working memory for this call.
 
 Do not repeat a tool call when memory already contains the information needed. Tool results are historical observations: they are not automatically refreshed or removed after mutations. Account for subsequent changes before relying on an earlier result.

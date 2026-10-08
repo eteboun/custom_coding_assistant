@@ -1,4 +1,5 @@
 from ..memory import Memory
+from collections.abc import Callable
 from ..providers.base import BaseLLM
 from ..tools.api import ApprovalHandler, ToolsAPI
 from ..tools.context import ToolEvent
@@ -15,6 +16,7 @@ def run(
     tools_api: ToolsAPI,
     logger: Logger,
     approval_handler: ApprovalHandler | None = None,
+    before_model_call: Callable[[QuerySession], None] | None = None,
 ) -> str:
 
     with QuerySession(query, logger, memory) as session:
@@ -22,6 +24,8 @@ def run(
             schemas = tools_api.schemas()
 
             for _ in range(llm.max_iters):
+                if before_model_call is not None:
+                    before_model_call(session)
                 initial_memory = memory.to_log()
                 response = llm.generate(session.context(), schemas)
                 usage = llm.usage(response)

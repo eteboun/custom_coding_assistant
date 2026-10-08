@@ -17,9 +17,9 @@ class Memory(LogElement, FormattableContext):
     def add_query_record(self, record: QueryRecord) -> None:
         self.query_records.append(record)
 
-    def compress(self) -> None:
-        """Replace the context stream with the accumulated query records."""
-        self.elements = list(self.query_records)
+    def compress(self, active_elements: list[MemoryElement] | None = None) -> None:
+        """Replace earlier work with records and retain the active task's elements."""
+        self.elements = [*self.query_records, *(active_elements or [])]
 
     def add_element(self, element: MemoryElement) -> None:
         if not isinstance(element, MemoryElement):
