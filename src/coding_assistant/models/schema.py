@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
+from dataclasses import dataclass, asdict
 from typing import Literal, Self
+from decimal import Decimal
 
+from .pricing import calculate_cost_usd
 from ..utils import LogElement
 
 ProviderId = Literal[
@@ -66,7 +69,8 @@ class ModelsData(BaseModel):
 
     models: dict[str, ModelData]
 
-class TokenUsage(BaseModel, LogElement):
+@dataclass
+class TokenUsage(LogElement):
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -75,9 +79,16 @@ class TokenUsage(BaseModel, LogElement):
     cache_write_tokens: int | None = None
 
     total_tokens: int = 0
+    total_cost: Decimal = Decimal("0.0")
+
+    def set_cost(self, model_data: ModelData):
+        self.total_cost = calculate_cost_usd(
+            self,
+            model_data
+        )
 
     def to_log(self) -> dict:
-        return self.model_dump()
+        return {**asdict(self), 'total_cost': float(self.total_cost)}
 
     @staticmethod
     def _add_optional(total: int | None, value: int | None) -> int | None:
@@ -90,6 +101,7 @@ class TokenUsage(BaseModel, LogElement):
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
         self.total_tokens += other.total_tokens
+        self.total_cost += other.total_cost
 
         self.reasoning_tokens = self._add_optional(
             total=self.reasoning_tokens,

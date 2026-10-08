@@ -5,6 +5,7 @@ from ..models.schema import TokenUsage, ReasoningLevel, ModelData
 from ..tools.context import ToolCall, ToolOutput
 from ..tools.schema import ToolSchema
 
+
 class BaseLLM[ClientT](ABC):
     def __init__(
         self,
@@ -21,6 +22,11 @@ class BaseLLM[ClientT](ABC):
         self.model_data = model_data
         self.reasoning = reasoning
         self.max_iters = max_iters
+
+    @abstractmethod
+    def token_count(self, text: str) -> int:
+        """Count text tokens with this provider's model tokenizer."""
+        ...
 
     @abstractmethod
     def usage(self, response) -> TokenUsage:

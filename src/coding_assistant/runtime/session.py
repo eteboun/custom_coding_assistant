@@ -1,4 +1,6 @@
 from ..memory.memory import Memory
+from ..memory.schema import QueryRecord
+from ..utils import MaxIterationsError
 from ..tools.context import ToolEvent
 from ..runtime.logger import Logger, QueryLog, LLMCallLog
 
@@ -24,6 +26,9 @@ class QuerySession:
         self.query_log = QueryLog(
             query=query
         )
+        self.query_record = QueryRecord(
+            query=query, loop_completed=False, final_response=None,
+        )
 
         self.output: str | None = None
         self.loop_completed = False
@@ -33,7 +38,7 @@ class QuerySession:
     def __enter__(self) -> Self:
         self._started_at = perf_counter()
         if self.memory is not None:
-            self.memory.start_query(
+            self.memory.add_query(
                 query=self.query
             )
 
@@ -49,12 +54,18 @@ class QuerySession:
 
         try:
             if self.memory is not None:
-                self.memory.finish_query(
-                    output=self.output,
-                    loop_completed=self.loop_completed
-                )
+                if self.output is not None:
+                    self.memory.add_output_text(self.output)
 
-                self.query_log.session_final_memory = self.memory.to_log()
+                self.query_record.loop_completed = self.loop_completed
+                self.query_record.final_response = self.output
+                self.query_record.stop_reason = (
+                    'max_iterations' if isinstance(exc_value, MaxIterationsError)
+                    else 'error' if exc_value is not None else None
+                )
+                self.memory.add_query_record(self.query_record)
+
+                self.query_log.final_memory = self.memory.to_log()
 
         except Exception as error:
             cleanup_errors.append(error)
@@ -105,6 +116,16 @@ class QuerySession:
             )
 
         self.memory.add_event(event)
+        if event.output.mutations:
+            self.query_record.add_mutation({
+                'name': event.call.name,
+                'summary': event.call.mutation_summary,
+                'mutations': [mutation.to_log() for mutation in event.output.mutations],
+                'outcome': {
+                    'status': event.output.status,
+                    'message': event.output.message,
+                },
+            })
 
     def add_llm_call(self, llm_call: LLMCallLog) -> None:
         self.query_log.add_llm_call(llm_call)

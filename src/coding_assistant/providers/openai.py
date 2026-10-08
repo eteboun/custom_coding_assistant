@@ -1,5 +1,6 @@
 from typing import override
 import json
+import tiktoken
 
 from openai import OpenAI
 from openai.types.shared_params import Reasoning
@@ -27,6 +28,15 @@ class OpenAILLM(BaseLLM[OpenAI]):
             max_iters=max_iters,
             client=OpenAI()
         )
+
+    @override
+    def token_count(self, text: str) -> int:
+        try:
+            encoding = tiktoken.encoding_for_model(self.model_data.id)
+        except KeyError:
+            # Approximate newer models not yet present in tiktoken's mapping.
+            encoding = tiktoken.get_encoding('o200k_base')
+        return len(encoding.encode_ordinary(text))
 
     @override
     def tool_output_contract(
@@ -61,11 +71,8 @@ class OpenAILLM(BaseLLM[OpenAI]):
         if prev_id is not None:
             kwargs["previous_response_id"] = prev_id
 
-        input_ = (
-            input_
-            if isinstance(input_, str)
-            else self.tool_output_contract(input_)
-        )
+        if not isinstance(input_, str):
+            input_ = self.tool_output_contract(input_)
 
         response = self.client.responses.create(
             model=self.model_data.id,
@@ -83,7 +90,7 @@ class OpenAILLM(BaseLLM[OpenAI]):
     def usage(self, response: Response) -> TokenUsage:
         usage = response.usage
 
-        return TokenUsage(
+        t_usage = TokenUsage(
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
@@ -91,6 +98,9 @@ class OpenAILLM(BaseLLM[OpenAI]):
             cached_input_tokens=usage.input_tokens_details.cached_tokens,
             cache_write_tokens=getattr(usage.input_tokens_details, "cache_write_tokens", None)
         )
+        t_usage.set_cost(model_data=self.model_data)
+
+        return t_usage
 
     @override
     def output_text(self, response: Response) -> str:

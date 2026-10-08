@@ -17,9 +17,9 @@ def main():
     repo_path = Path.cwd()
 
     try:
-        config = Config.from_json(
-            json_path=config_file,
-            repo_path=repo_path
+        config = Config.model_validate_json(
+            config_file.read_text(encoding="utf-8"),
+            context={"repo_path": repo_path},
         )
 
         assistant_ = Assistant(

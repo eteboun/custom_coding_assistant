@@ -1,34 +1,38 @@
 from pathlib import Path
-from logging import getLogger
 import inspect
+import json
 
 from coding_assistant.config import Config
-from coding_assistant.memory.dispatch import create_architecture
+from coding_assistant.memory.memory import Memory
 from coding_assistant.runtime.logger import Logger
-from coding_assistant.runtime.session import QuerySession
+from coding_assistant.runtime.runner import run
 
 from coding_assistant.models.operations import resolve_model_config
 
 from coding_assistant.providers.dispatch import create_llm
 
 from coding_assistant.tools.api import ToolsAPI
-from coding_assistant.utils import RecoverableError, CommandError
+from coding_assistant.utils import RecoverableError, CommandError, format_context_structure
 
-logger = getLogger(__name__)
 
 class Assistant:
+
+    _compression_threshold_percent = 50.0
 
     def __init__(
             self,
             instructions: str,
             repo_path: Path,
-            config: Config
+            config: Config,
+            *,
+            memory: Memory | None = None,
     ) -> None:
 
         model_data, reasoning = resolve_model_config(
             model_name=config.model_name,
             reasoning=config.reasoning
         )
+        self.model_data = model_data
 
         self.tools_api = ToolsAPI(
             repo_path=repo_path,
@@ -36,10 +40,7 @@ class Assistant:
             blocked_dirs=config.blocked_dirs
         )
 
-        self.architecture, self.memory = create_architecture(
-            name=config.architecture,
-            api=self.tools_api
-        )
+        self.memory = memory if memory is not None else Memory()
 
         self.logger = Logger(
             log_path=config.log_path,
@@ -64,28 +65,14 @@ class Assistant:
         return approval.strip().lower() == "y"
 
     def _run_query(self, query: str) -> str:
-        try:
-            with QuerySession(
-                query=query,
-                query_logger=self.logger,
-                memory=self.memory
-            ) as session:
-                with self.tools_api as api:
-                    return self.architecture.run(
-                        approval_handler=self.get_approval,
-                        session=session,
-                        api=api,
-                        llm=self.llm,
-                        max_iters=self.config.max_iters
-                    )
-
-        except Exception:
-            try:
-                self.logger.log()
-            except Exception:
-                logger.exception("Failed to persist query log after query failure.")
-
-            raise
+        return run(
+            query,
+            llm=self.llm,
+            memory=self.memory,
+            tools_api=self.tools_api,
+            logger=self.logger,
+            approval_handler=self.get_approval,
+        )
 
     @staticmethod
     def _command():
@@ -160,7 +147,7 @@ class Assistant:
             f"Reasoning tokens: {usage.reasoning_tokens}\n"
             f"Cached input tokens: {usage.cached_input_tokens}\n"
             f"Cache write tokens: {usage.cache_write_tokens}\n"
-            f"Total cost (USD): ${self.logger.total_cost_usd():f}"
+            f"Total cost (USD): ${usage.total_cost:f}"
         )
 
     @_command()
@@ -182,6 +169,52 @@ class Assistant:
         return (
             f"Current config reasoning: {self.config.reasoning}\n"
             f"Current effective reasoning: {self.llm.reasoning}"
+        )
+
+    @_command()
+    def context(self) -> str:
+        """Show context token count and percentage of the model context window."""
+        percentage = self._context_percentage()
+        source = (
+            'approximate tokenized prefix + memory size'
+            if self.memory.context_size_is_estimate
+            else 'last API input'
+        )
+        return (
+            f'Context: {self.memory.context_size:,} / '
+            f'{self.model_data.context_window:,} tokens ({percentage:.2f}%) '
+            f'[{source}]'
+        )
+
+    def _context_percentage(self) -> float:
+        return self.memory.context_size / self.model_data.context_window * 100
+
+    def _prefix(self) -> str:
+        schemas = self.llm.tool_schema_contract(self.tools_api.schemas())
+        return self.llm.instructions + '\n' + json.dumps(schemas, ensure_ascii=False) + '\n'
+
+    @_command()
+    def compress(self) -> str:
+        """Replace memory elements with the accumulated query records."""
+        percentage = self._context_percentage()
+        if percentage < self._compression_threshold_percent:
+            return (
+                f'Compression failed: context is below the '
+                f'{self._compression_threshold_percent:g}% threshold.\n'
+                f'{self.context()}'
+            )
+        compressed_context = (
+            format_context_structure(tag='memory', structure=self.memory.query_records)
+            if self.memory.query_records else ''
+        )
+        context_size = self.llm.token_count(self._prefix() + compressed_context)
+        self.memory.compress()
+        self.memory.context_size = context_size
+        self.memory.context_size_is_estimate = True
+        return (
+            f'Memory successfully compressed into '
+            f'{len(self.memory.query_records)} query records.\n'
+            f'{self.context()}'
         )
 
     @_command()

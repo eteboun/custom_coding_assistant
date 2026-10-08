@@ -7,9 +7,8 @@ from ..backends.errors import BackendUsageErrorScope, BackendUsageError
 from ..backends.workspace import Workspace
 from ..backends.sandbox import Sandbox
 from ..backends.results import OperationResult
-from ..mutation import Operation
 from .schema import ToolSchema, Parameters, Metadata, Approval
-from .context import Invalidation, LearningMetadata, ToolOutput, ToolUsageError, UpdateScope
+from .context import LearningMetadata, ToolOutput, ToolUsageError
 
 
 class Tools:
@@ -124,13 +123,7 @@ class Tools:
             required=["path"],
             additional_properties=False
         ),
-        metadata=Metadata(
-            update_scope=UpdateScope.FILE,
-            update_when={
-                Operation.UPDATE: Invalidation.REFRESH,
-                Operation.DELETE: Invalidation.DISCARD
-            }
-        )
+        metadata=Metadata()
     )
     def read_file(
         self,
@@ -158,13 +151,7 @@ class Tools:
             required=["path"],
             additional_properties=False,
         ),
-        metadata=Metadata(
-            update_scope=UpdateScope.REPOSITORY,
-            update_when={
-                Operation.ADD: Invalidation.REFRESH,
-                Operation.DELETE: Invalidation.REFRESH
-            }
-        )
+        metadata=Metadata()
     )
     def list_directory(self, path: str) -> ToolOutput:
         return self._backend_call(self.workspace.list_directory,
@@ -196,13 +183,7 @@ class Tools:
             required=[],
             additional_properties=False
         ),
-        metadata=Metadata(
-            update_scope=UpdateScope.REPOSITORY,
-            update_when={
-                Operation.ADD: Invalidation.REFRESH,
-                Operation.DELETE: Invalidation.REFRESH
-            }
-        )
+        metadata=Metadata()
     )
     def search_files(
             self,
@@ -246,14 +227,7 @@ class Tools:
             required=["query"],
             additional_properties=False
         ),
-        metadata=Metadata(
-            update_scope=UpdateScope.REPOSITORY,
-            update_when={
-                Operation.ADD: Invalidation.REFRESH,
-                Operation.DELETE: Invalidation.REFRESH,
-                Operation.UPDATE: Invalidation.REFRESH
-            }
-        )
+        metadata=Metadata()
     )
     def search_text(self,
                     query: str,
@@ -323,8 +297,6 @@ class Tools:
         ),
         strict=True,
         metadata=Metadata(
-            update_scope=None,
-            update_when={},
             mutative=True
         )
     )
@@ -357,8 +329,6 @@ class Tools:
             additional_properties=False,
         ),
         metadata=Metadata(
-            update_scope=None,
-            update_when={},
             mutative=True
         )
     )
@@ -378,13 +348,7 @@ class Tools:
             required=[],
             additional_properties=False
         ),
-        metadata=Metadata(
-            update_scope=UpdateScope.REPOSITORY,
-            update_when={
-                Operation.ADD: Invalidation.REFRESH,
-                Operation.DELETE: Invalidation.REFRESH
-            }
-        )
+        metadata=Metadata()
     )
     def repo_tree(self) -> ToolOutput:
         return self._backend_call(self.workspace.repo_tree)
@@ -415,8 +379,6 @@ class Tools:
             additional_properties=False
         ),
         metadata=Metadata(
-            update_scope=None,
-            update_when={},
             mutative=True,
             approval=Approval(
                 template="Agent wants to run this command: {command}"

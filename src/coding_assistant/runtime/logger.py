@@ -1,26 +1,24 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 import json
 
 from ..utils import LogElement, LogError
 from ..models.schema import ModelData, TokenUsage
-from ..models.pricing import calculate_cost_usd
 
 
 @dataclass
 class LLMCallLog(LogElement):
     usage: TokenUsage
-    initial_memory: dict[str, Any] | None = field(
+    memory: dict[str, Any] | None = field(
         default=None,
         init=False
     )
 
     def to_log(self) -> dict:
         return {
-            "initial_memory": self.initial_memory,
+            "memory": self.memory,
             "usage": self.usage.to_log()
         }
 
@@ -28,16 +26,11 @@ class LLMCallLog(LogElement):
 @dataclass
 class LLMToolEventLog(LLMCallLog):
     events: list[dict] = field(default_factory=list)
-    final_memory: dict[str, Any] | None = field(
-        default=None,
-        init=False
-    )
 
     def to_log(self) -> dict:
         return {
             **super().to_log(),
             "events": self.events,
-            "final_memory": self.final_memory
         }
 
 
@@ -58,7 +51,7 @@ class QueryLog(LogElement):
     errors: list[Exception] = field(
         default_factory=list
     )
-    session_final_memory: dict[str, Any] | None = field(
+    final_memory: dict[str, Any] | None = field(
         default=None,
         init=False
     )
@@ -78,22 +71,16 @@ class QueryLog(LogElement):
 
         return usage
 
-    def total_cost_usd(self, model_data: ModelData) -> Decimal:
-        return sum(
-            (calculate_cost_usd(call.usage, model_data) for call in self.llm_calls),
-            Decimal(0),
-        )
 
-    def to_log(self, model_data: ModelData) -> dict:
+    def to_log(self) -> dict:
         return {
             "query": self.query,
-            "session_final_memory": self.session_final_memory,
+            "final_memory": self.final_memory,
             "llm_calls": [
                 llm_call.to_log()
                 for llm_call in self.llm_calls
             ],
             "total_usage": self.total_usage().to_log(),
-            "total_cost_usd": float(self.total_cost_usd(model_data)),
             "timedelta_seconds": self.timedelta.total_seconds(),
             "errors": [
                 str(e)
@@ -111,11 +98,10 @@ class Logger(LogElement):
     def to_log(self) -> dict[str, Any]:
         return {
                 "queries": [
-                    query_log.to_log(self.model_data)
+                    query_log.to_log()
                     for query_log in self.query_logs
                 ],
                 "total_usage": self.total_usage().to_log(),
-                "total_cost_usd": float(self.total_cost_usd()),
                 "total_timedelta_seconds": self.total_timedelta().total_seconds(),
                 "rough_context": self.rough_context,
                 "model_id": self.model_data.id,
@@ -130,12 +116,6 @@ class Logger(LogElement):
 
         return usage
 
-    def total_cost_usd(self) -> Decimal:
-        return sum(
-            (query_log.total_cost_usd(self.model_data) for query_log in self.query_logs),
-            Decimal(0),
-        )
-
     def total_timedelta(self) -> timedelta:
         return sum(
             (query_log.timedelta for query_log in self.query_logs),
@@ -144,7 +124,8 @@ class Logger(LogElement):
 
     def add_query_log(self, query_log: QueryLog) -> None:
         self.query_logs.append(query_log)
-        self.rough_context = query_log.total_usage().input_tokens
+        if query_log.llm_calls:
+            self.rough_context = query_log.llm_calls[-1].usage.input_tokens
 
     def log(self) -> str:
         if not self.query_logs:

@@ -1,9 +1,8 @@
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
 from ..utils import LogElement, ContextElement
-from ..mutation import Mutation, Operation
+from ..mutation import Mutation
 
 
 Status = Literal["success", "error", "denied"]
@@ -32,15 +31,6 @@ class ToolUsageError(Exception):
             if learning is not None
             else LearningMetadata()
         )
-
-class UpdateScope(StrEnum):
-    REPOSITORY = "repository"
-    FILE = "file"
-
-class Invalidation(StrEnum):
-    REFRESH = "refresh"
-    DISCARD = "discard"
-
 
 @dataclass(frozen=True)
 class ToolOutput(LogElement, ContextElement):
@@ -124,29 +114,13 @@ class ToolEvent(LogElement, ContextElement):
     call: ToolCall
     output: ToolOutput
 
-    update_when: dict[Operation, Invalidation] = field(default_factory=dict)
-    update_scope: UpdateScope | None = None
-
     def is_fail(self) -> bool:
         return self.output.is_fail()
 
     def to_log(self) -> dict:
-        update_when = {
-                op.value: inv.value
-                for op, inv in self.update_when.items()
-            } if self.update_when is not None else None
-
-        update_scope = (
-            self.update_scope.value
-            if self.update_scope is not None
-            else None
-        )
-
         return {
             "call": self.call.to_log(),
             "output": self.output.to_log(),
-            "update_when": update_when,
-            "update_scope": update_scope
         }
 
     def to_context(self):

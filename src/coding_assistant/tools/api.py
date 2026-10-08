@@ -6,10 +6,8 @@ from logging import getLogger
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-from ..mutation import Operation
 from .content import Tools
-from .context import (ToolCall, ToolOutput, ToolUsageError,
-                      UpdateScope, Invalidation)
+from .context import ToolCall, ToolOutput, ToolUsageError
 from .schema import ToolSchema
 
 logger = getLogger(__name__)
@@ -21,8 +19,6 @@ ApprovalHandler = Callable[[str], bool]
 @dataclass
 class ToolsAPIResponse:
     output: ToolOutput
-    update_when: dict[Operation, Invalidation]
-    update_scope: UpdateScope | None
 
     def is_fail(self) -> bool:
         return self.output.is_fail()
@@ -79,8 +75,6 @@ class ToolsAPI:
                 status="denied",
                 message=reason,
             ),
-            update_when={},
-            update_scope=None
         )
 
     def schemas(self) -> list[ToolSchema]:
@@ -151,12 +145,8 @@ class ToolsAPI:
                     message=str(error),
                     learning_metadata=error.learning
                 ),
-                update_when={},
-                update_scope=None
             )
 
         return ToolsAPIResponse(
             output=output,
-            update_when=tool_data.metadata.update_when,
-            update_scope=tool_data.metadata.update_scope,
         )

@@ -119,6 +119,7 @@ class Sandbox:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8", errors="replace", timeout=30,
             )
 
             if result.returncode != 0:
@@ -163,6 +164,7 @@ class Sandbox:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8", errors="replace", timeout=30,
         )
 
         if result.returncode != 0:
@@ -239,9 +241,15 @@ class Sandbox:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8", errors="replace",
                 timeout=self.timeout,
             )
         except subprocess.TimeoutExpired as exc:
+            # Killing the docker CLI does not kill the command inside the container.
+            # Replace the container before allowing further agent work so a timed-out
+            # process cannot keep modifying the repository in the background.
+            self.stop()
+            self.start()
             raise BackendUsageError(
                 f"Command timed out after {self.timeout} seconds.",
                 error_key="sandbox.command_timeout",

@@ -37,7 +37,7 @@ class Workspace:
                 cmd,
                 cwd=cwd,
                 capture_output=True,
-                text=True
+                text=True, encoding="utf-8", errors="replace"
             )
 
         except FileNotFoundError as e:

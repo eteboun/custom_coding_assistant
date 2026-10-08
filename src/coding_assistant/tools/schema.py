@@ -2,8 +2,6 @@ from collections.abc import Callable
 from typing import Self
 from dataclasses import dataclass
 
-from ..mutation import Operation
-from .context import UpdateScope, Invalidation
 
 @dataclass(frozen=True)
 class Approval:
@@ -21,8 +19,6 @@ class Parameters:
 
 @dataclass(frozen=True)
 class Metadata:
-    update_scope: UpdateScope | None
-    update_when: dict[Operation, Invalidation]
     mutative: bool = False
     approval: Approval | None = None
 

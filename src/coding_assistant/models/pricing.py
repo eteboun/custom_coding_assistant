@@ -1,6 +1,10 @@
-from decimal import Decimal
+from __future__ import annotations
 
-from .schema import ModelData, TokenUsage
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .schema import ModelData, TokenUsage
 
 def calculate_cost_usd(usage: TokenUsage, model: ModelData) -> Decimal:
     pricing = model.pricing

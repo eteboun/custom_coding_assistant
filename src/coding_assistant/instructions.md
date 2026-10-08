@@ -49,17 +49,19 @@ Do not introduce unrelated abstractions, dependencies, files, configuration, val
 
 ## 4. Use working memory
 
-The provided context may contain previous query records, persistent learnings, current mutations, current learnings, current tool results, and the current query.
+The provided memory contains an ordered sequence of queries, assistant output texts, and tool events. Each tool event contains a call and its output together. The latest query is the current task; events after it record work already performed on that task.
+
+After compression, earlier work appears as query records containing the query, final response, mutation summaries, completion status, and stop reason. An incomplete record describes work that may still need follow-up.
 
 Treat it as working memory for this call.
 
-Do not repeat a tool call when current tool context already contains the information needed. Current tool results reflect the memory system's current view; stale results may have been refreshed or removed after mutations.
+Do not repeat a tool call when memory already contains the information needed. Tool results are historical observations: they are not automatically refreshed or removed after mutations. Account for subsequent changes before relying on an earlier result.
 
 Mutation summaries describe successful changes already applied. Do not repeat them merely for confirmation.
 
-Persistent learnings describe relevant tool-use constraints learned from previous failures. Apply them when relevant.
+Apply relevant tool-use constraints shown by previous failures.
 
-Previous query records are historical context, not authoritative snapshots of current repository contents. Re-inspect only when exact current state materially affects the next action.
+Earlier queries and their events are historical context, not authoritative snapshots of current repository contents. Re-inspect only when exact current state materially affects the next action.
 
 ## 5. Avoid redundant work and verify proportionally
 
