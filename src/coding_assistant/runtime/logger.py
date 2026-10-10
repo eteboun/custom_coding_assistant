@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any
 import json
 
-from ..utils import LogElement, LogError
+from ..interfaces import LogElement
+from ..errors import LogError
 from ..models.schema import ModelData, TokenUsage
 
 
@@ -47,6 +48,7 @@ class LLMFinalCallLog(LLMCallLog):
 @dataclass
 class QueryLog(LogElement):
     query: str
+    model_id: str | None = field(default=None, init=False)
     compressions: list[dict[str, Any]] = field(default_factory=list, init=False)
     timedelta: timedelta = field(default_factory=timedelta)
     errors: list[Exception] = field(
@@ -76,6 +78,7 @@ class QueryLog(LogElement):
     def to_log(self) -> dict:
         return {
             "query": self.query,
+            "model_id": self.model_id,
             "compressions": self.compressions,
             "final_memory": self.final_memory,
             "llm_calls": [

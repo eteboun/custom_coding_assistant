@@ -3,7 +3,7 @@ from collections.abc import Callable
 from ..providers.base import BaseLLM
 from ..tools.api import ApprovalHandler, ToolsAPI
 from ..tools.context import ToolEvent
-from ..utils import MaxIterationsError
+from ..errors import MaxIterationsError
 from .logger import Logger, LLMCallLog, LLMFinalCallLog, LLMToolEventLog
 from .session import QuerySession
 

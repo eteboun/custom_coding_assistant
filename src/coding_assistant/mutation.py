@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .utils import LogElement
+from .interfaces import LogElement
 
 
 class Operation(StrEnum):

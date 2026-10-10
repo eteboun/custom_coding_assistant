@@ -23,7 +23,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 coding_assistant = [
-    "models.json",
-    "assistant.json",
-    "instructions.md"
+    "resources/models.json",
+    "resources/assistant.json",
+    "resources/instructions.md"
 ]

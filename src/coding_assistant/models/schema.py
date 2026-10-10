@@ -6,7 +6,7 @@ from typing import Literal, Self
 from decimal import Decimal
 
 from .pricing import calculate_cost_usd
-from ..utils import LogElement
+from ..interfaces import LogElement
 
 ProviderId = Literal[
     "openai"

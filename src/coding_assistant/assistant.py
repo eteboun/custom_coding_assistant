@@ -9,12 +9,14 @@ from coding_assistant.runtime.logger import Logger
 from coding_assistant.runtime.runner import run
 from coding_assistant.runtime.session import QuerySession
 
-from coding_assistant.models.operations import resolve_model_config
+from coding_assistant.models.operations import resolve_model_config, resolve_model_switch
 
 from coding_assistant.providers.dispatch import create_llm
+from coding_assistant.providers.base import BaseLLM
 
 from coding_assistant.tools.api import ToolsAPI
-from coding_assistant.utils import RecoverableError, CommandError, format_context_structure
+from coding_assistant.errors import RecoverableError, CommandError
+from coding_assistant.context import format_context_structure
 
 
 class Assistant:
@@ -124,11 +126,11 @@ class Assistant:
 
         try:
             if query.startswith("/"):
-                command = self._parse_command(query)
+                command, arguments = self._parse_command(query)
 
                 if command in self.mapping:
                     return self._run_command(
-                        command=command
+                        command=command, arguments=arguments,
                     )
 
                 raise CommandError(
@@ -142,13 +144,18 @@ class Assistant:
         except RecoverableError as e:
             return str(e)
 
-    def _run_command(self, command: str) -> str:
+    def _run_command(self, command: str, arguments: list[str]) -> str:
         func = self.mapping[command]
-        return func(self).strip()
+        try:
+            inspect.signature(func).bind(self, *arguments)
+        except TypeError as error:
+            raise CommandError(f'Invalid arguments for /{command}. See /help.') from error
+        return func(self, *arguments).strip()
 
     @staticmethod
-    def _parse_command(query: str) -> str:
-        return query.removeprefix("/")
+    def _parse_command(query: str) -> tuple[str, list[str]]:
+        parts = query.removeprefix('/').split()
+        return (parts[0], parts[1:]) if parts else ('', [])
 
     @staticmethod
     def _get_command_functions():
@@ -189,13 +196,56 @@ class Assistant:
         )
 
     @_command()
-    def model(self) -> str:
+    def model(self, model_name: str | None = None) -> str:
         """
-        Shows current model if no model name is provided.
+        /model [model_name]: show the current model or switch models, preserving memory.
         """
-
+        if model_name is None:
+            return f'Current model: {self.llm.model_data.id}'
+        try:
+            model_data, reasoning = resolve_model_switch(model_name, self.llm.reasoning)
+        except ValueError:
+            return (
+                f'Model {model_name} was not found.\n'
+                f'Current model retained: {self.llm.model_data.id}'
+            )
+        if model_data.id == self.llm.model_data.id:
+            return f'Current model: {model_data.id} (already selected)'
+        try:
+            new_llm = create_llm(
+                instructions=self.llm.instructions,
+                model_data=model_data,
+                reasoning=reasoning,
+                max_iters=self.llm.max_iters,
+            )
+            context_size = new_llm.token_count(self._prefix(new_llm) + self.memory.format_context())
+        except Exception as error:
+            return (
+                f'Failed to switch models: {error}\n'
+                f'Current model retained: {self.llm.model_data.id}'
+            )
+        percentage = context_size / model_data.context_window * 100
+        if context_size > model_data.context_window:
+            return (
+                f'Model change blocked: estimated context would use {percentage:.2f}% '
+                f'of {model_data.id}\'s context window '
+                f'({context_size:,} / {model_data.context_window:,} tokens).\n\n'
+                'Run /compress with the current model before trying this model again.\n'
+                f'Current model retained: {self.llm.model_data.id}'
+            )
+        self.llm = new_llm
+        self.model_data = model_data
+        self.logger.model_data = model_data
+        self.config.model_name = model_name
+        self.config.reasoning = reasoning
+        self.memory.context_size = context_size
+        self.memory.context_size_is_estimate = True
         return (
-            f"Current model: {self.llm.model_data.id}"
+            f'Model changed: {model_data.id}\n'
+            f'Reasoning: {reasoning}\n'
+            f'Estimated context: {percentage:.2f}% '
+            f'({context_size:,} / {model_data.context_window:,} tokens)\n'
+            'Memory preserved.'
         )
 
     @_command()
@@ -236,9 +286,10 @@ class Assistant:
     def _context_percentage(self) -> float:
         return self.memory.context_size / self.model_data.context_window * 100
 
-    def _prefix(self) -> str:
-        schemas = self.llm.tool_schema_contract(self.tools_api.schemas())
-        return self.llm.instructions + '\n' + json.dumps(schemas, ensure_ascii=False) + '\n'
+    def _prefix(self, llm: BaseLLM | None = None) -> str:
+        llm = self.llm if llm is None else llm
+        schemas = llm.tool_schema_contract(self.tools_api.schemas())
+        return llm.instructions + '\n' + json.dumps(schemas, ensure_ascii=False) + '\n'
 
     @_command()
     def compress(self) -> str:

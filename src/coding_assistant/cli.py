@@ -5,7 +5,7 @@ from pathlib import Path
 
 from coding_assistant.assistant import Assistant
 from coding_assistant.config import Config
-from .utils import instructions, config_file
+from .resources import instructions, config_file
 
 from dotenv import load_dotenv
 

@@ -1,6 +1,6 @@
 from ..memory.memory import Memory
 from ..memory.schema import QueryRecord
-from ..utils import MaxIterationsError
+from ..errors import MaxIterationsError
 from ..tools.context import ToolEvent
 from ..runtime.logger import Logger, QueryLog, LLMCallLog
 
@@ -26,6 +26,7 @@ class QuerySession:
         self.query_log = QueryLog(
             query=query
         )
+        self.query_log.model_id = query_logger.model_data.id
         self.query_record = QueryRecord(
             query=query, loop_completed=False, final_response=None,
         )

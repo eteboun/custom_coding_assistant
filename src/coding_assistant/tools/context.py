@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
-from ..utils import LogElement, ContextElement
+from ..interfaces import LogElement, ContextElement
 from ..mutation import Mutation
 
 

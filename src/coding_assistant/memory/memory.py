@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 
 from ..tools.context import ToolEvent
-from ..utils import LogElement, FormattableContext, format_context_structure
+from ..interfaces import LogElement, FormattableContext
+from ..context import format_context_structure
 
 from .schema import MemoryElement, QueryElement, ToolEventElement, OutputTextElement, QueryRecord
 

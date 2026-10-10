@@ -1,3 +1,5 @@
+"""Tool implementations wrapping repository and sandbox operations."""
+
 import inspect
 
 from collections.abc import Callable

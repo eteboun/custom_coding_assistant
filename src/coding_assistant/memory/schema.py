@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..tools.context import ToolEvent
-from ..utils import LogElement, ContextElement
+from ..interfaces import LogElement, ContextElement
 
 
 class MemoryElement(LogElement, ContextElement):

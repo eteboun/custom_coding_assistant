@@ -1,5 +1,22 @@
 from .schema import ModelData, ReasoningLevel
-from .models import models_data
+from .catalog import models_data
+from typing import get_args
+
+
+def resolve_model_switch(
+    model_name: str,
+    current_reasoning: ReasoningLevel | None,
+) -> tuple[ModelData, ReasoningLevel | None]:
+    model_data = _resolve_model(model_name)
+    levels = model_data.reasoning.levels
+    if not levels:
+        return model_data, None
+    if current_reasoning in levels:
+        return model_data, current_reasoning
+    if model_data.reasoning.default is not None:
+        return model_data, model_data.reasoning.default
+    order = get_args(ReasoningLevel)
+    return model_data, min(levels, key=order.index)
 
 def _resolve_model(
         model_name: str
