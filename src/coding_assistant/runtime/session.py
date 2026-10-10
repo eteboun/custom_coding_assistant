@@ -120,9 +120,8 @@ class QuerySession:
 
         self.memory.add_event(event)
         if event.output.mutations:
-            self.query_record.add_mutation({
+            self.query_record.add_mutation_event({
                 'name': event.call.name,
-                'summary': event.call.mutation_summary,
                 'mutations': [mutation.to_log() for mutation in event.output.mutations],
                 'outcome': {
                     'status': event.output.status,

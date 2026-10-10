@@ -279,22 +279,12 @@ class Tools:
                             "using only ' ', '-', and '+' line prefixes."
                     ),
                 },
-                "change_summary": {
-                    "type": "string",
-                    "description": (
-                            "A concise semantic summary of what this mutation "
-                            "is intended to change and why. Describe behavior "
-                            "or state changes, not patch mechanics."
-                    )
-                }
             },
-            required=["patch", "change_summary"],
+            required=["patch"],
             additional_properties=False,
         ),
         strict=True,
-        metadata=Metadata(
-            mutative=True
-        )
+        metadata=Metadata()
     )
     def apply_patch(
             self,
@@ -312,21 +302,11 @@ class Tools:
                     "type": "string",
                     "description": "Repository-relative path for the directory to be deleted.",
                 },
-                "change_summary": {
-                    "type": "string",
-                    "description": (
-                            "A concise semantic summary of what this mutation "
-                            "is intended to change and why. Describe the purpose "
-                            "of removing the directory, not the deletion mechanics."
-                    )
-                }
             },
-            required=["path", "change_summary"],
+            required=["path"],
             additional_properties=False,
         ),
-        metadata=Metadata(
-            mutative=True
-        )
+        metadata=Metadata()
     )
     def delete_directory(self, path: str) -> ToolOutput:
         return self._backend_call(self.workspace.delete_directory,
@@ -362,20 +342,11 @@ class Tools:
                     "type": "string",
                     "description": "The shell command to execute."
                 },
-                "change_summary": {
-                    "type": "string",
-                    "description": (
-                        "Describe any repository changes the command is expected "
-                        "to make. If none are expected, state that. This summary "
-                        "is saved only when changes are detected."
-                    ),
-                }
             },
-            required=["command", "change_summary"],
+            required=["command"],
             additional_properties=False
         ),
         metadata=Metadata(
-            mutative=True,
             approval=Approval(
                 template="Agent wants to run this command: {command}"
             )

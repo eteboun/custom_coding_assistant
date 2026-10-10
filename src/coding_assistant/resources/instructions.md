@@ -51,7 +51,7 @@ Do not introduce unrelated abstractions, dependencies, files, configuration, val
 
 The provided memory contains an ordered sequence of queries, assistant output texts, and tool events. Each tool event contains a call and its output together. The latest query is the current task; events after it record work already performed on that task.
 
-After compression, earlier work appears as query records containing the query, final response, mutation summaries, completion status, and stop reason. An incomplete record describes work that may still need follow-up.
+After compression, earlier work appears as query records containing the query, final response, mutation events, completion status, and stop reason. Mutation events identify the tool, changed paths, operations, and outcome; they do not contain a semantic change summary or full diff. An incomplete record describes work that may still need follow-up.
 
 If compression happens during the current task, earlier queries become query records while the current query and all of its tool events and assistant texts remain intact. Continue using those active task elements.
 
@@ -59,7 +59,7 @@ Treat it as working memory for this call.
 
 Do not repeat a tool call when memory already contains the information needed. Tool results are historical observations: they are not automatically refreshed or removed after mutations. Account for subsequent changes before relying on an earlier result.
 
-Mutation summaries describe successful changes already applied. Do not repeat them merely for confirmation.
+Mutation events record detected filesystem changes. Do not repeat those changes merely for confirmation.
 
 Apply relevant tool-use constraints shown by previous failures.
 

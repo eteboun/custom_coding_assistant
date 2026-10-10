@@ -92,12 +92,8 @@ class ToolsAPI:
             tool = self._tools.function_mapping[call.name]
             tool_data = self._tools.data_mapping[call.name]
 
-            validation_args = dict(call.args)
-            if call.mutation_summary is not None:
-                validation_args["change_summary"] = call.mutation_summary
-
             try:
-                self._validators[call.name].validate(validation_args)
+                self._validators[call.name].validate(call.args)
 
             except ValidationError as error:
                 location = ".".join(
@@ -111,14 +107,6 @@ class ToolsAPI:
                 raise ToolUsageError(
                     f"Invalid arguments for tool '{call.name}': {message}"
                 ) from error
-
-            if (
-                    tool_data.metadata.mutative
-                    and not call.mutation_summary.strip()
-            ):
-                raise ToolUsageError(
-                    f"Tool {call.name} requires a nonempty mutation summary"
-                )
 
             approval = tool_data.metadata.approval
             if approval is not None:

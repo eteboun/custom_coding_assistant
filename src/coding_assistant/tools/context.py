@@ -59,16 +59,10 @@ class ToolCall(LogElement, ContextElement):
     args: dict
     id: str
 
-    mutation_summary: str | None = None
-
-    def __post_init__(self):
-        self.mutation_summary = self.args.pop("change_summary", None)
-
     def to_log(self) -> dict:
         return {
             "name": self.name,
             "args": self.args,
-            "mutation_summary": self.mutation_summary
         }
 
     def to_context(self) -> dict:

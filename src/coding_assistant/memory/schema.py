@@ -47,16 +47,16 @@ class QueryRecord(MemoryElement):
     query: str
     loop_completed: bool
     final_response: str | None
-    mutation_summaries: list[dict[str, Any]] = field(default_factory=list)
+    mutation_events: list[dict[str, Any]] = field(default_factory=list)
     stop_reason: str | None = None
 
     def to_log(self) -> dict:
         return {
             "query": self.query,
             "final_response": self.final_response,
-            "mutation_summaries": [
+            "mutation_events": [
                 mutation
-                for mutation in self.mutation_summaries
+                for mutation in self.mutation_events
             ],
             "loop_completed": self.loop_completed,
             "stop_reason": self.stop_reason,
@@ -69,11 +69,11 @@ class QueryRecord(MemoryElement):
             "loop_completed": self.loop_completed,
             "stop_reason": self.stop_reason,
             "final_response": self.final_response,
-            "mutation_summaries": [
+            "mutation_events": [
                 mutation
-                for mutation in self.mutation_summaries
+                for mutation in self.mutation_events
             ]
         }
 
-    def add_mutation(self, mutation_summary: dict[str, Any]) -> None:
-        self.mutation_summaries.append(mutation_summary)
+    def add_mutation_event(self, event: dict[str, Any]) -> None:
+        self.mutation_events.append(event)

@@ -19,7 +19,6 @@ class Parameters:
 
 @dataclass(frozen=True)
 class Metadata:
-    mutative: bool = False
     approval: Approval | None = None
 
 
